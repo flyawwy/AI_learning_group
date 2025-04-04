@@ -6,3 +6,4 @@
 ## 相关链接
 
 * [西瓜书阅读助手](https://www.coze.cn/store/agent/7487918070238085131?bid=6fqkg9mig201v&bot_id=true "coze搭建的西瓜书阅读助手")
+* [动手学深度学习](https://zh.d2l.ai/index.html)
