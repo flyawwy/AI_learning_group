@@ -148,9 +148,9 @@ def compute_branch_flows(t, params):
     else:
         return flows
 
-# 计算7:30（t=30）和8:30（t=90）的支路流量值
-t_7_30 = 30  # 7:30 = 30分钟
-t_8_30 = 90  # 8:30 = 90分钟
+# 计算7:30（t=15）和8:30（t=45）的支路流量值
+t_7_30 = 15
+t_8_30 = 45
 
 flow_7_30 = compute_branch_flows(t_7_30, best_params)
 flow_8_30 = compute_branch_flows(t_8_30, best_params)
@@ -161,14 +161,20 @@ print("8:30 各支路流量值:", flow_8_30)
 # 绘制主路流量拟合结果
 predicted_F = total_flow(times, best_params)
 plt.figure(figsize=(12, 6))
-plt.plot(times, F_true, label='实际主路流量')
-plt.plot(times, predicted_F, label='拟合主路流量')
+plt.plot(times, F_true, label='实际主路流量', color='blue')
+plt.plot(times, predicted_F, label='拟合主路流量', linestyle='--', color='green')
+
+# 绘制各支路流量曲线
+flows = compute_branch_flows(times, best_params)
+for 支路, flow in flows.items():
+    plt.plot(times, flow, label=支路)
 
 plt.xlabel('时间（分钟）')
 plt.ylabel('流量（辆/2分钟）')
-plt.legend()
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')  # 调整图例位置避免重叠
 plt.title('主路及各支路流量拟合结果（优化后）')
 plt.grid()
+plt.tight_layout()  # 自动调整子图参数,使之填充整个图像区域
 plt.show()
 
 # 残差分析
