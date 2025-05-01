@@ -87,7 +87,6 @@ def pso_with_adaptive_inertia():
             maxiter=1000,
         )
 
-        # 局部优化方法由 Nelder-Mead 改为 L-BFGS-B，提高精度
         result_local = minimize(
             objective,
             xopt_pso,
@@ -134,10 +133,21 @@ predicted_F = total_flow(times, best_params)
 plt.figure(figsize=(12, 6))
 plt.plot(times, F_true, label='实际主路流量')
 plt.plot(times, predicted_F, label='拟合主路流量')
+
+# 计算并绘制各支路流量曲线
+branch_flows = {
+    "Branch1": total_flow(times, best_params * np.array([1] + [0]*12)),  # Branch1 only
+    "Branch2": total_flow(times, best_params * np.array([0,1,1,1,1] + [0]*8)),  # Branch2 only
+    "Branch3": total_flow(times, best_params * np.array([0]*5 + [1,1,1,1] + [0]*4)),  # Branch3 only
+    "Branch4": total_flow(times, best_params * np.array([0]*9 + [1,1,1,1]))   # Branch4 only
+}
+for name, flow in branch_flows.items():
+    plt.plot(times, flow, label=f'支路流量 - {name}')
+
 plt.xlabel('时间（分钟）')
 plt.ylabel('流量（辆/2分钟）')
 plt.legend()
-plt.title('主路流量拟合结果（优化后）')
+plt.title('主路及各支路流量拟合结果（优化后）')
 plt.grid()
 plt.show()
 
