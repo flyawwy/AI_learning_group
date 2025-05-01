@@ -21,30 +21,44 @@ def huber_loss(y_true, y_pred, delta=10.0):
 def branch1(t, C1):
     return C1 if np.isscalar(t) else np.full_like(t, C1)
 
-def branch2(t, a1, b1, a2, C2):
+def branch2(t, a1, b1, a2):
+    C2 = a1 * 24 + b1
     result = np.zeros_like(t)
-    result[t <= 24] = a1 * t[t <= 24] + b1
-    result[(t > 24) & (t < 37)] = C2
-    result[t >= 37] = -a2 * t[t >= 37] + a2*37 + C2
+    mask_growth = (t <= 24)
+    mask_stable = (t > 24) & (t <= 37)
+    mask_decrease = (t > 37)
+
+    result[mask_growth] = a1 * t[mask_growth] + b1
+    result[mask_stable] = C2
+    result[mask_decrease] = a2 * t[mask_decrease] + a2 * 37 + C2
     return result
 
 def branch3(t, a3, b3, t2, C3):
-    result = np.zeros_like(t)
+    result = np.zeros_like(t, dtype=float)
+
+    # 确保t2时刻的车流量与稳定值C3相等，保证平滑过渡
+    C2_at_t2 = a3 * t2 + b3
+
     linear_growth_mask = t < t2
-    result[linear_growth_mask] = a3 * t[linear_growth_mask] + b3
     stable_mask = t >= t2
+
+    # 在线性增长阶段，使用原始公式
+    result[linear_growth_mask] = a3 * t[linear_growth_mask] + b3
+
+    # 在稳定阶段，直接设置为C3
     result[stable_mask] = C3
+
     return result
 
 def branch4(t, A, B, omega, phi):
     return A * np.sin(omega * t + phi) + B
 
 def total_flow(t, params):
-    C1, a1, b1, a2, C2, a3, b3, t2, C3, A, B, omega, phi = params
-    t_delayed = t - 2  # 支路1和2延迟2分钟
+    C1, a1, b1, a2, a3, b3, t2, C3, A, B, omega, phi = params
+    t_delayed = np.maximum(0, t - 2)  # 支路1和2延迟2分钟
     return (
         branch1(t_delayed, C1) +
-        branch2(t_delayed, a1, b1, a2, C2) +
+        branch2(t_delayed, a1, b1, a2) +
         branch3(t, a3, b3, t2, C3) +
         branch4(t, A, B, omega, phi)
     )
@@ -56,22 +70,21 @@ def objective(params, times, F_measured):
 
 # 参数边界约束
 bounds = [
-    (5, 15),        # C1 (支路1稳定值)
-    (0.2, 0.5),     # a1 (支路2第一段斜率)
-    (10, 30),       # b1 (支路2第一段截距)
-    (0.2, 0.5),     # a2 (支路2第三段斜率)
-    (30, 60),       # C2 (支路2中间稳定值)
-    (0.2, 0.5),     # a3 (支路3线性增长斜率)
-    (10, 30),       # b3 (支路3线性增长截距)
-    (60, 80),       # t2 (支路3转折点)
-    (30, 60),       # C3 (支路3稳定值)
-    (3, 10),        # A (支路4振幅)
-    (20, 35),       # B (支路4基线)
-    (0.3, 0.6),     # omega (支路4频率)
-    (-np.pi, np.pi) # phi (支路4相位角)
+    (5, 10),
+    (0.4, 0.5),
+    (10, 20),
+    (0.2, 0.3),
+    (0.4, 0.5),
+    (10, 20),
+    (35, 45),
+    (15, 20),
+    (5, 10),
+    (20, 25),
+    (0.4, 0.5),
+    (-np.pi, np.pi)
 ]
 
-initial_guess = [10, 0.3, 20, 0.3, 45, 0.3, 20, 70, 45, 5, 25, 0.4, 0]
+initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 15., 7.4344, 20., 0.4583, -2.5121]
 
 def optimize():
     xopt_pso, fopt_pso = pso(objective, lb=[b[0] for b in bounds], ub=[b[1] for b in bounds],
@@ -89,9 +102,9 @@ def compute_branch_flows(t, params):
     t_array = np.array([t]) if np.isscalar(t) else np.array(t)
     flows = {
         "Branch1": branch1(t_array - 2, params[0]),
-        "Branch2": branch2(t_array - 2, *params[1:5]),
-        "Branch3": branch3(t_array, *params[5:9]),
-        "Branch4": branch4(t_array, *params[9:])
+        "Branch2": branch2(t_array - 2, *params[1:4]),
+        "Branch3": branch3(t_array, *params[4:8]),
+        "Branch4": branch4(t_array, *params[8:])
     }
     return {k: v[0] if np.isscalar(t) else v for k, v in flows.items()}
 
@@ -104,11 +117,12 @@ print("8:30 各支路流量值:", flow_8_30)
 def format_expression_branch1(C1):
     return f"支路1: f(t) = {C1:.2f} （稳定）"
 
-def format_expression_branch2(a1, b1, a2, C2):
+def format_expression_branch2(a1, b1, a2):
+    C2 = a1 * 24 + b1
     return (f"支路2: f(t) = \\begin{{cases}} "
             f"{a1:.2f}t + {b1:.2f}, & t < 24 \\\\ "
-            f"{C2:.2f}, & 24 \\leq t < 32 \\\\ "
-            f"-{a2:.2f}t + {a2*32 + C2:.2f}, & t \\geq 32 "
+            f"{C2:.2f}, & 24 \\leq t < 37 \\\\ "
+            f"-{a2:.2f}t + {a2*37 + C2:.2f}, & t \\geq 37 "
             "\\end{cases}")
 
 def format_expression_branch3(a3, b3, t2, C3):
@@ -120,11 +134,11 @@ def format_expression_branch3(a3, b3, t2, C3):
 def format_expression_branch4(A, B, omega, phi):
     return f"支路4: f(t) = {A:.2f} \\cdot \\sin({omega:.2f}t + {phi:.2f}) + {B:.2f}"
 
-C1_opt, a1_opt, b1_opt, a2_opt, C2_opt, a3_opt, b3_opt, t2_opt, C3_opt, A_opt, B_opt, omega_opt, phi_opt = best_params
+C1_opt, a1_opt, b1_opt, a2_opt, a3_opt, b3_opt, t2_opt, C3_opt, A_opt, B_opt, omega_opt, phi_opt = best_params
 
 print("\n--- 各支路车流量函数表达式 ---")
 print(format_expression_branch1(C1_opt))
-print(format_expression_branch2(a1_opt, b1_opt, a2_opt, C2_opt))
+print(format_expression_branch2(a1_opt, b1_opt, a2_opt))
 print(format_expression_branch3(a3_opt, b3_opt, t2_opt, C3_opt))
 print(format_expression_branch4(A_opt, B_opt, omega_opt, phi_opt))
 
