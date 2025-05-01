@@ -33,15 +33,12 @@ def branch2(t, a1, b1, a2, b2, t0, t1, C2):
 # 支路3（先线性增长后稳定）
 def branch3(t, a3, b3, t2, C3):
     result = np.zeros_like(t)
-
-    # 线性增长部分
     linear_growth_mask = t < t2
     result[linear_growth_mask] = a3 * t[linear_growth_mask] + b3
 
     # 稳定部分
     stable_mask = t >= t2
     result[stable_mask] = C3
-
     return result
 
 # 支路4（周期性规律）
@@ -55,7 +52,7 @@ def total_flow(t, params):
     return (
         branch1(t_delayed, C1) +
         branch2(t_delayed, a1, b1, a2, b2, t0, t1, C2) +
-        branch3(t, a3, b3, t2, C3) +  # 使用新的支路3函数
+        branch3(t, a3, b3, t2, C3) +
         branch4(t, A, B, omega, phi)
     )
 
@@ -85,75 +82,36 @@ bounds = [
     (-np.pi, np.pi) # phi (支路4相位角)
 ]
 
-# 动态惯性权重的PSO优化
-def pso_with_adaptive_inertia():
-    best_error = np.inf
-    best_params = None
+# 初始参数估计
+initial_guess = [10, 0.3, 20, 0.3, 20, 50, 75, 45, 0.3, 20, 70, 45, 5, 25, 0.4, 0]
 
-    for omega in [0.9, 0.75, 0.6, 0.45, 0.3]:
-        xopt_pso, fopt_pso = pso(
-            objective,
-            lb=[b[0] for b in bounds],
-            ub=[b[1] for b in bounds],
-            args=(times, F_true),
-            swarmsize=200,
-            omega=omega,
-            minfunc=1e-8,
-            minstep=1e-8,
-            maxiter=1500,
-        )
+# PSO初步搜索后，采用L-BFGS-B进行精细调整
+def optimize():
+    xopt_pso, fopt_pso = pso(objective, lb=[b[0] for b in bounds], ub=[b[1] for b in bounds],
+                             args=(times, F_true), swarmsize=200, omega=0.5, minfunc=1e-8, maxiter=1500)
 
-        result_local = minimize(
-            objective,
-            xopt_pso,
-            args=(times, F_true),
-            method='L-BFGS-B',
-            bounds=bounds
-        )
-
-        if result_local.fun < best_error:
-            best_error = result_local.fun
-            best_params = result_local.x
-
-    return best_params, best_error
+    result_local = minimize(objective, xopt_pso, args=(times, F_true), method='L-BFGS-B', bounds=bounds)
+    return result_local.x, result_local.fun
 
 # 执行优化
-best_params, best_error = pso_with_adaptive_inertia()
+best_params, best_error = optimize()
 
 print("最终最优参数:", best_params)
 print("最终最小误差:", best_error)
 
 # 计算指定时刻的支路流量值
 def compute_branch_flows(t, params):
-    C1, a1, b1, a2, b2, t0, t1, C2, a3, b3, t2, C3, A, B, omega, phi = params
-
-    t_scalar = False
-    if np.isscalar(t):
-        t_scalar = True
-        t_array = np.array([t])
-    else:
-        t_array = np.array(t)
-
-    t_delayed = t_array - 2
-
+    t_array = np.array([t]) if np.isscalar(t) else np.array(t)
     flows = {
-        "Branch1": branch1(t_delayed, C1),
-        "Branch2": branch2(t_delayed, a1, b1, a2, b2, t0, t1, C2),
-        "Branch3": branch3(t_array, a3, b3, t2, C3),
-        "Branch4": branch4(t_array, A, B, omega, phi)
+        "Branch1": branch1(t_array - 2, params[0]),
+        "Branch2": branch2(t_array - 2, *params[1:8]),
+        "Branch3": branch3(t_array, *params[8:12]),
+        "Branch4": branch4(t_array, *params[12:])
     }
+    return {k: v[0] if np.isscalar(t) else v for k, v in flows.items()}
 
-    if t_scalar:
-        return {k: v[0] for k, v in flows.items()}
-    else:
-        return flows
-
-# 计算7:30（t=15）和8:30（t=45）的支路流量值
-t_7_30 = 15
-t_8_30 = 45
-
-flow_7_30 = compute_branch_flows(t_7_30, best_params)
-flow_8_30 = compute_branch_flows(t_8_30, best_params)
+flow_7_30 = compute_branch_flows(15, best_params)
+flow_8_30 = compute_branch_flows(45, best_params)
 
 print("7:30 各支路流量值:", flow_7_30)
 print("8:30 各支路流量值:", flow_8_30)
@@ -166,8 +124,8 @@ plt.plot(times, predicted_F, label='拟合主路流量', linestyle='--', color='
 
 # 绘制各支路流量曲线
 flows = compute_branch_flows(times, best_params)
-for 支路, flow in flows.items():
-    plt.plot(times, flow, label=支路)
+for name, flow in flows.items():
+    plt.plot(times, flow, label=name)
 
 plt.xlabel('时间（分钟）')
 plt.ylabel('流量（辆/2分钟）')
