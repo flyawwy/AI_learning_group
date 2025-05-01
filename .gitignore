@@ -176,3 +176,7 @@ cython_debug/
 
 # d2l
 d2l-zh/
+
+# MCM
+*.docx
+*.xlsx
