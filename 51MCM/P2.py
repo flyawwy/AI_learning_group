@@ -31,10 +31,18 @@ def branch2(t, a1, b1, a2, b2, t0, t1, C2):
     return result
 
 # 支路3（先线性增长后稳定）
-def branch3(t, a2, b2, t1, C3):
-    x = (t - t1) / 10  # 平滑过渡
-    sigmoid = 1 / (1 + np.exp(-x))
-    return (1 - sigmoid) * (a2 * t + b2) + sigmoid * C3
+def branch3(t, a3, b3, t2, C3):
+    result = np.zeros_like(t)
+
+    # 线性增长部分
+    linear_growth_mask = t < t2
+    result[linear_growth_mask] = a3 * t[linear_growth_mask] + b3
+
+    # 稳定部分
+    stable_mask = t >= t2
+    result[stable_mask] = C3
+
+    return result
 
 # 支路4（周期性规律）
 def branch4(t, A, B, omega, phi):
@@ -47,7 +55,7 @@ def total_flow(t, params):
     return (
         branch1(t_delayed, C1) +
         branch2(t_delayed, a1, b1, a2, b2, t0, t1, C2) +
-        branch3(t, a3, b3, t2, C3) +
+        branch3(t, a3, b3, t2, C3) +  # 使用新的支路3函数
         branch4(t, A, B, omega, phi)
     )
 
@@ -118,13 +126,27 @@ print("最终最小误差:", best_error)
 # 计算指定时刻的支路流量值
 def compute_branch_flows(t, params):
     C1, a1, b1, a2, b2, t0, t1, C2, a3, b3, t2, C3, A, B, omega, phi = params
-    t_delayed = np.array([t]) - 2 if isinstance(t, int) else t - 2
-    return {
+
+    t_scalar = False
+    if np.isscalar(t):
+        t_scalar = True
+        t_array = np.array([t])
+    else:
+        t_array = np.array(t)
+
+    t_delayed = t_array - 2
+
+    flows = {
         "Branch1": branch1(t_delayed, C1),
         "Branch2": branch2(t_delayed, a1, b1, a2, b2, t0, t1, C2),
-        "Branch3": branch3(t, a3, b3, t2, C3),
-        "Branch4": branch4(t, A, B, omega, phi)
+        "Branch3": branch3(t_array, a3, b3, t2, C3),
+        "Branch4": branch4(t_array, A, B, omega, phi)
     }
+
+    if t_scalar:
+        return {k: v[0] for k, v in flows.items()}
+    else:
+        return flows
 
 # 计算7:30（t=30）和8:30（t=90）的支路流量值
 t_7_30 = 30  # 7:30 = 30分钟
@@ -141,16 +163,6 @@ predicted_F = total_flow(times, best_params)
 plt.figure(figsize=(12, 6))
 plt.plot(times, F_true, label='实际主路流量')
 plt.plot(times, predicted_F, label='拟合主路流量')
-
-# 计算并绘制各支路流量曲线
-branch_flows = {
-    "Branch1": total_flow(times, best_params * np.array([1] + [0]*15)),  # Branch1 only
-    "Branch2": total_flow(times, best_params * np.array([0,1,1,1,1,1,1,1] + [0]*8)),  # Branch2 only
-    "Branch3": total_flow(times, best_params * np.array([0]*8 + [1,1,1,1] + [0]*4)),  # Branch3 only
-    "Branch4": total_flow(times, best_params * np.array([0]*12 + [1,1,1,1]))   # Branch4 only
-}
-for name, flow in branch_flows.items():
-    plt.plot(times, flow, label=f'支路流量 - {name}')
 
 plt.xlabel('时间（分钟）')
 plt.ylabel('流量（辆/2分钟）')
