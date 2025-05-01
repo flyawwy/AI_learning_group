@@ -116,6 +116,37 @@ flow_8_30 = compute_branch_flows(45, best_params)
 print("7:30 各支路流量值:", flow_7_30)
 print("8:30 各支路流量值:", flow_8_30)
 
+# 输出各支路车流量函数表达式
+
+def format_expression_branch1(C1):
+    return f"支路1: f(t) = {C1:.2f} （稳定）"
+
+def format_expression_branch2(a1, b1, a2, b2, t0, t1, C2):
+    return (f"支路2: f(t) = \\begin{{cases}} "
+            f"{a1:.2f}t + {b1:.2f}, & t < {int(t0)} \\\\ "
+            f"{C2:.2f}, & {int(t0)} \\leq t < {int(t1)} \\\\ "
+            f"{a2:.2f}t + {b2:.2f}, & t \\geq {int(t1)} "
+            "\\end{cases}")
+
+def format_expression_branch3(a3, b3, t2, C3):
+    return (f"支路3: f(t) = \\begin{{cases}} "
+            f"{a3:.2f}t + {b3:.2f}, & t < {int(t2)} \\\\ "
+            f"{C3:.2f}, & t \\geq {int(t2)} "
+            "\\end{cases}")
+
+def format_expression_branch4(A, B, omega, phi):
+    return f"支路4: f(t) = {A:.2f} \\cdot \\sin({omega:.2f}t + {phi:.2f}) + {B:.2f}"
+
+# 提取最优参数
+C1_opt, a1_opt, b1_opt, a2_opt, b2_opt, t0_opt, t1_opt, C2_opt, a3_opt, b3_opt, t2_opt, C3_opt, A_opt, B_opt, omega_opt, phi_opt = best_params
+
+# 输出表达式
+print("\n--- 各支路车流量函数表达式 ---")
+print(format_expression_branch1(C1_opt))
+print(format_expression_branch2(a1_opt, b1_opt, a2_opt, b2_opt, t0_opt, t1_opt, C2_opt))
+print(format_expression_branch3(a3_opt, b3_opt, t2_opt, C3_opt))
+print(format_expression_branch4(A_opt, B_opt, omega_opt, phi_opt))
+
 # 绘制主路流量拟合结果
 predicted_F = total_flow(times, best_params)
 plt.figure(figsize=(12, 6))
