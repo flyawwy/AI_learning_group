@@ -22,21 +22,24 @@ def branch1(t, C1):
     return C1 if np.isscalar(t) else np.full_like(t, C1)
 
 def branch2(t, a1, b1, a2):
-    C2 = a1 * 24 + b1
+    C2 = a1 * 24 + b1 # 稳定阶段的车流量
     result = np.zeros_like(t)
+
     mask_growth = (t <= 24)
     mask_stable = (t > 24) & (t <= 37)
     mask_decrease = (t > 37)
 
     result[mask_growth] = a1 * t[mask_growth] + b1
     result[mask_stable] = C2
-    result[mask_decrease] = a2 * t[mask_decrease] + a2 * 37 + C2
+    # 确保线性减少阶段在 t=37 处与稳定阶段的值相等
+    result[mask_decrease] = a2 * (t[mask_decrease] - 37) + C2
+
     return result
 
 def branch3(t, a3, b3, t2, C3):
     result = np.zeros_like(t, dtype=float)
 
-    # 确保t2时刻的车流量与稳定值C3相等，保证平滑过渡
+    # 确保在 t2 时刻的车流量等于 C3
     C2_at_t2 = a3 * t2 + b3
 
     linear_growth_mask = t < t2
@@ -45,8 +48,8 @@ def branch3(t, a3, b3, t2, C3):
     # 在线性增长阶段，使用原始公式
     result[linear_growth_mask] = a3 * t[linear_growth_mask] + b3
 
-    # 在稳定阶段，直接设置为C3
-    result[stable_mask] = C3
+    # 在稳定阶段，直接设置为 C2_at_t2 而不是 C3，从而保证连续性
+    result[stable_mask] = C2_at_t2
 
     return result
 
