@@ -99,8 +99,8 @@ bounds = [
     (10, 20),
     (35, 45),
     (15, 20),
-    (1, 10),  # N的边界
-    (20, 30),  # T的边界
+    (3, 10),  # N的边界
+    (10, 45),  # T的边界
     (0, 10),  # A0的边界
     (-10, 10),  # A1的边界
     (-10, 10),  # A2的边界
@@ -177,7 +177,7 @@ def format_expression_branch3(a3, b3, t2, C3):
             f"{C3:.2f}, & t \\geq {int(t2)} "
             "\\end{cases}")
 
-def format_expression_branch4_fourier(N, T, A0, A, B):
+def format_expression_branch4(N, T, A0, A, B):
     terms = [f"{A0:.2f}"]
     for n in range(1, N+1):
         terms.append(f"{A[n-1]:.2f} \\cos\\left(\\frac{{2\\pi {n} t}}{{{T}}}\\right)")
@@ -195,7 +195,7 @@ print("\n--- 各支路车流量函数表达式 ---")
 print(format_expression_branch1(C1_opt))
 print(format_expression_branch2(a1_opt, b1_opt, a2_opt))
 print(format_expression_branch3(a3_opt, b3_opt, t2_opt, C3_opt))
-print(format_expression_branch4_fourier(N_opt, T_opt, A0_opt, A_opt, B_opt))
+print(format_expression_branch4(N_opt, T_opt, A0_opt, A_opt, B_opt))
 
 # 绘图
 predicted_F = total_flow(times, best_params)
