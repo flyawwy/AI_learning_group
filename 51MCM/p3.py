@@ -261,6 +261,22 @@ class TrafficAnalysisSystem:
 
         with open('./P3/交通流量分析报告.md', 'w', encoding='utf-8') as f:
             f.write("# === 交通流量分析报告 ===\n\n")
+            f.write("【支路1模型参数】\n")
+            f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
+            f.write(f"初始值: {a_params[1]:.4f}\n")
+            f.write(f"下降阶段斜率1: {a_params[2]:.4f}\n")
+            f.write(f"稳定值: {a_params[4]:.4f}\n")
+            f.write(f"下降阶段斜率2: {a_params[5]:.4f}\n")
+            f.write(f"转折点: {a_params[6]:.1f}, {a_params[7]:.1f}, {a_params[8]:.1f}, {a_params[9]:.1f}\n\n")
+
+            f.write("【支路2模型参数】\n")
+            f.write(f"增长斜率: {b_params[0]:.4f}\n")
+            f.write(f"截距: {b_params[1]:.4f}\n")
+            f.write(f"稳定值: {b_params[2]:.4f}\n")
+            f.write(f"下降斜率: {b_params[3]:.4f}\n")
+            f.write(f"终值: {b_params[4]:.4f}\n")
+            f.write(f"转折点: {b_params[5]:.1f}, {b_params[6]:.1f}\n\n")
+
             f.write(f"模型RMSE误差: {self.model_error:.4f}\n\n")
 
             f.write("## 【支路1流量模型表达式】\n\n")

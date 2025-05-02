@@ -59,7 +59,7 @@ bounds = [
     (20, 40)        # t0 in [20, 40]
 ]
 
-# 新的初始猜测
+# 初始猜测
 initial_params = [0.6, 0, 0.8, 15, -1, 75, 30]
 
 # 执行带约束优化（使用带惩罚项的目标函数）
@@ -93,7 +93,7 @@ plt.xlabel("时间（分钟，7:00起计）")
 plt.ylabel("残差 (预测-观测)")
 plt.title("残差分布图")
 plt.grid(True)
-plt.show()
+plt.savefig('./P1/残差分布.png')
 
 # 可视化对比
 plt.figure(figsize=(12, 6))
@@ -106,4 +106,4 @@ plt.xlabel("时间（分钟，7:00起计）")
 plt.ylabel("车流量")
 plt.title("主路车流量与支路估计车流量对比")
 plt.grid(True)
-plt.show()
+plt.savefig('./P1/主路车流量与支路估计车流量对比.png')
