@@ -124,7 +124,7 @@ bounds = [
     (-10, 10),  # B10的边界
 ]
 
-initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 15., 5, 25, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 15., 5, 25, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
 def optimize():
     xopt_pso, fopt_pso = pso(objective, lb=[b[0] for b in bounds], ub=[b[1] for b in bounds],
@@ -210,10 +210,11 @@ for name, flow in flows.items():
 plt.xlabel('时间（分钟）')
 plt.ylabel('流量（辆/2分钟）')
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-plt.title('主路及各支路流量拟合结果（优化后）')
+plt.title('主路及各支路流量拟合结果')
 plt.grid()
 plt.tight_layout()
-plt.show()
+plt.savefig('./P2/主路及各支路流量拟合结果.png')
+plt.close()
 
 residuals = F_true - predicted_F
 plt.figure(figsize=(12, 6))
@@ -224,7 +225,8 @@ plt.ylabel('残差')
 plt.title('残差分布')
 plt.legend()
 plt.grid()
-plt.show()
+plt.savefig('./P2/残差分布.png')
+plt.close()
 
 plt.figure(figsize=(8, 6))
 plt.hist(residuals, bins=20, color='skyblue', edgecolor='black')
@@ -232,4 +234,24 @@ plt.xlabel('残差')
 plt.ylabel('频率')
 plt.title('残差分布直方图')
 plt.grid()
-plt.show()
+plt.savefig('./P2/残差分布直方图.png')
+plt.close()
+
+# 输出公式到 result.md
+result_lines = ['# Result']
+result_lines.append(f'$ {format_expression_branch1(C1_opt)} $')
+result_lines.append(f'$ {format_expression_branch2(a1_opt, b1_opt, a2_opt)} $')
+result_lines.append(f'$ {format_expression_branch3(a3_opt, b3_opt, t2_opt, C3_opt)} $')
+result_lines.append(f'$ {format_expression_branch4(N_opt, T_opt, A0_opt, A_opt, B_opt)} $')
+
+with open('./P2/result.md', 'w', encoding='utf-8') as f:
+    for line in result_lines:
+        f.write(line + '\n')
+    f.write('\n')
+    f.write('## 7:30 各支路流量值\n')
+    for k, v in flow_7_30.items():
+        f.write(f'- {k}: {v:.2f}\n')
+    f.write('\n')
+    f.write('## 8:30 各支路流量值\n')
+    for k, v in flow_8_30.items():
+        f.write(f'- {k}: {v:.2f}\n')
