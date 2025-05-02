@@ -204,7 +204,6 @@ class TrafficAnalysisSystem:
         """可视化分析结果"""
         self._plot_main_comparison()
         self._plot_branch_flows()
-        plt.show()
 
     def _plot_main_comparison(self):
         """绘制主路流量对比图"""
@@ -264,24 +263,23 @@ class TrafficAnalysisSystem:
             f.write("# === 交通流量分析报告 ===\n\n")
             f.write(f"模型RMSE误差: {self.model_error:.4f}\n\n")
 
-            f.write("【支路1模型参数】\n")
-            f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
-            f.write(f"初始值: {a_params[1]:.4f}\n")
-            f.write(f"下降阶段斜率1: {a_params[2]:.4f}\n")
-            f.write(f"稳定值: {a_params[4]:.4f}\n")
-            f.write(f"下降阶段斜率2: {a_params[5]:.4f}\n")
-            f.write(f"转折点: {a_params[6]:.1f}, {a_params[7]:.1f}, {a_params[8]:.1f}, {a_params[9]:.1f}\n\n")
+            f.write("## 【支路1流量模型表达式】\n\n")
+            f.write(r"$f_1(t) = \begin{cases} 0, & t < brk_1 \ a_1 (t-brk_1) + a_2, & brk_1 \leq t < brk_2 \ a_3 (t-brk_2) + a_4, & brk_2 \leq t < brk_3 \ a_5, & brk_3 \leq t < brk_4 \ a_6 (t-brk_4), & t \geq brk_4 \end{cases}$")
+            f.write('\n\n')
 
-            f.write("【支路2模型参数】\n")
-            f.write(f"增长斜率: {b_params[0]:.4f}\n")
-            f.write(f"截距: {b_params[1]:.4f}\n")
-            f.write(f"稳定值: {b_params[2]:.4f}\n")
-            f.write(f"下降斜率: {b_params[3]:.4f}\n")
-            f.write(f"终值: {b_params[4]:.4f}\n")
-            f.write(f"转折点: {b_params[5]:.1f}, {b_params[6]:.1f}\n\n")
+            f.write("## 【支路2流量模型表达式】\n\n")
+            f.write(r"$f_2(t) = \begin{cases} b_1 t + b_2, & t \leq brk_5 \ b_3, & brk_5 < t \leq brk_6 \ b_4 (t-brk_6) + b_5, & t > brk_6 \end{cases}$")
+            f.write('\n\n')
 
-            f.write("【关键时间点流量】\n")
+            f.write("## 【支路3流量模型表达式】\n\n")
+            f.write(r"$f_3(t) = \text{分周期分段线性, 仅在每周期绿灯段有流量, 其余为0}$")
+            f.write('\n\n')
+            f.write(r"具体为: $f_3(t) = \sum_{i=0}^{4} [ s_i (t-s_i^0) + c_i ] \cdot I_{[s_i^0, s_i^0+G)}(t) $, 其中 $s_i^0 = FIRST\_GREEN + i \times CYCLE\_LENGTH$, $G$为绿灯时长, $I$为区间指示函数。")
+            f.write('\n\n')
+
+            f.write("## 【关键时间点流量】\n\n")
             f.write("时间点 | 支路1 | 支路2 | 支路3\n")
+            f.write("---|---|---|---\n")
             f.write(f"7:30  | {f1_730[0]:5.2f} | {f2_730[0]:5.2f} | {f3_730[0]:5.2f}\n")
             f.write(f"8:30  | {f1_830[0]:5.2f} | {f2_830[0]:5.2f} | {f3_830[0]:5.2f}\n")
 
