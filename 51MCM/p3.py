@@ -261,7 +261,7 @@ class TrafficAnalysisSystem:
         f1_830, f2_830, f3_830 = self._calculate_branch_flows(np.array([t2]), self.optimal_params)
 
         with open('./P3/交通流量分析报告.md', 'w', encoding='utf-8') as f:
-            f.write("=== 交通流量分析报告 ===\n\n")
+            f.write("# === 交通流量分析报告 ===\n\n")
             f.write(f"模型RMSE误差: {self.model_error:.4f}\n\n")
 
             f.write("【支路1模型参数】\n")
