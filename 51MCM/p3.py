@@ -23,7 +23,7 @@ class TrafficAnalysisSystem:
 
     def _load_dataset(self):
         """加载交通流量数据"""
-        df = pd.read_excel('C:\\Users\Lenovo\Desktop\\2025-51MCM-Problem A\附件(Attachment).xlsx',sheet_name='表3 (Table 3)')
+        df = pd.read_excel('.\\2025-51MCM-Problem A\附件(Attachment).xlsx',sheet_name='表3 (Table 3)')
         time_points = df['时间 t (Time t)'].values
         flow_data = df['主路4的车流量 (Traffic flow on the Main road 4)'].values
 
@@ -217,7 +217,7 @@ class TrafficAnalysisSystem:
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig('主路流量实测与预测对比.png', dpi=300, bbox_inches='tight')
+        plt.savefig('./P3/主路流量实测与预测对比.png', dpi=300, bbox_inches='tight')
 
     def _plot_branch_flows(self):
         """绘制支路流量图"""
@@ -247,7 +247,7 @@ class TrafficAnalysisSystem:
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig('支路车流量变化.png', dpi=300, bbox_inches='tight')
+        plt.savefig('./P3/支路车流量变化.png', dpi=300, bbox_inches='tight')
 
     def generate_report(self):
         """生成分析报告"""
@@ -260,7 +260,7 @@ class TrafficAnalysisSystem:
         f1_730, f2_730, f3_730 = self._calculate_branch_flows(np.array([t1]), self.optimal_params)
         f1_830, f2_830, f3_830 = self._calculate_branch_flows(np.array([t2]), self.optimal_params)
 
-        with open('traffic_analysis_report.txt', 'w', encoding='utf-8') as f:
+        with open('./P3/交通流量分析报告.md', 'w', encoding='utf-8') as f:
             f.write("=== 交通流量分析报告 ===\n\n")
             f.write(f"模型RMSE误差: {self.model_error:.4f}\n\n")
 
