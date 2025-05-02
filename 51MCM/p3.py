@@ -230,12 +230,6 @@ class TrafficAnalysisSystem:
         plt.plot(self.time_idx, f2, 'm-', label='支路2')
         plt.plot(self.time_idx, f3, 'c-', label='支路3')
 
-        # 标记转折点
-        for i, brk in enumerate(a_params[6:10]):
-            plt.axvline(x=brk, color='g', ls='--', alpha=0.3)
-        for brk in b_params[5:7]:
-            plt.axvline(x=brk, color='m', ls='--', alpha=0.3)
-
         # 标记绿灯时段
         for i in range(6):
             start = self.FIRST_GREEN + i * self.CYCLE_LENGTH
