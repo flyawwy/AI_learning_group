@@ -71,21 +71,6 @@ def objective(params, times, F_measured):
     predicted = total_flow(times, params)
     return huber_loss(F_measured, predicted, delta=10.0).sum()
 
-# 参数边界
-_bounds = [
-    (5, 10), (0.4, 0.5), (10, 20), (0.2, 0.3), (0.4, 0.5), (10, 20), (35, 45),
-    (3, 10), (10, 45), (0, 10), *[(-10, 10)]*20
-]
-_initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 5, 25, 5] + [1]*20
-
-def optimize():
-    xopt_pso, _ = pso(objective, lb=[b[0] for b in _bounds], ub=[b[1] for b in _bounds],
-                      args=(times, F_true), swarmsize=200, omega=0.5, minfunc=1e-8, maxiter=1500)
-    result_local = minimize(objective, xopt_pso, args=(times, F_true), method='L-BFGS-B', bounds=_bounds)
-    return result_local.x, result_local.fun
-
-best_params, best_error = optimize()
-
 # 支路流量分解
 
 def compute_branch_flows(t, params):
@@ -103,9 +88,6 @@ def compute_branch_flows(t, params):
         "Branch4": branch4(t_array, params_fourier)
     }
     return {k: v[0] if np.isscalar(t) else v for k, v in flows.items()}
-
-flow_7_30 = compute_branch_flows(15, best_params)
-flow_8_30 = compute_branch_flows(45, best_params)
 
 # 公式格式化
 
@@ -133,26 +115,6 @@ def format_expression_branch4(N, T, A0, A, B):
         terms.append(f"{A[n-1]:.2f} \\cos\\left(\\frac{{2\\pi {n} t}}{{{T}}}\\right)")
         terms.append(f"{B[n-1]:.2f} \\sin\\left(\\frac{{2\\pi {n} t}}{{{T}}}\\right)")
     return f"支路4: f(t) = " + " + ".join(terms)
-
-C1_opt, a1_opt, b1_opt, a2_opt, a3_opt, b3_opt, t2_opt = best_params[:7]
-N_opt = int(round(best_params[7]))
-T_opt = best_params[8]
-A0_opt = best_params[9]
-A_opt = best_params[10:10+N_opt]
-B_opt = best_params[10+N_opt:10+2*N_opt]
-
-# 输出主要结果
-print("最终最优参数:", best_params)
-print("最终最小误差:", best_error)
-print("7:30 各支路流量值:", flow_7_30)
-print("8:30 各支路流量值:", flow_8_30)
-print("\n--- 各支路车流量函数表达式 ---")
-print(format_expression_branch1(C1_opt))
-print(format_expression_branch2(a1_opt, b1_opt, a2_opt))
-print(format_expression_branch3(a3_opt, b3_opt, t2_opt))
-print(format_expression_branch4(N_opt, T_opt, A0_opt, A_opt, B_opt))
-
-# 绘图与结果输出
 
 def plot_and_save():
     predicted_F = total_flow(times, best_params)
@@ -216,4 +178,36 @@ def plot_and_save():
         for line in result_lines:
             f.write(line + '\n')
 
-plot_and_save()
+if __name__ == "__main__":
+    # 参数边界和初始猜测
+    _bounds = [
+        (5, 10), (0.4, 0.5), (10, 20), (0.2, 0.3), (0.4, 0.5), (10, 20), (35, 45),
+        (3, 10), (10, 45), (0, 10), *[(-10, 10)]*20
+    ]
+    _initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 5, 25, 5] + [1]*20
+
+    def optimize():
+        xopt_pso, _ = pso(objective, lb=[b[0] for b in _bounds], ub=[b[1] for b in _bounds],
+                          args=(times, F_true), swarmsize=200, omega=0.5, minfunc=1e-8, maxiter=1500)
+        result_local = minimize(objective, xopt_pso, args=(times, F_true), method='L-BFGS-B', bounds=_bounds)
+        return result_local.x, result_local.fun
+
+    best_params, best_error = optimize()
+    flow_7_30 = compute_branch_flows(15, best_params)
+    flow_8_30 = compute_branch_flows(45, best_params)
+    C1_opt, a1_opt, b1_opt, a2_opt, a3_opt, b3_opt, t2_opt = best_params[:7]
+    N_opt = int(round(best_params[7]))
+    T_opt = best_params[8]
+    A0_opt = best_params[9]
+    A_opt = best_params[10:10+N_opt]
+    B_opt = best_params[10+N_opt:10+2*N_opt]
+    print("最终最优参数:", best_params)
+    print("最终最小误差:", best_error)
+    print("7:30 各支路流量值:", flow_7_30)
+    print("8:30 各支路流量值:", flow_8_30)
+    print("\n--- 各支路车流量函数表达式 ---")
+    print(format_expression_branch1(C1_opt))
+    print(format_expression_branch2(a1_opt, b1_opt, a2_opt))
+    print(format_expression_branch3(a3_opt, b3_opt, t2_opt))
+    print(format_expression_branch4(N_opt, T_opt, A0_opt, A_opt, B_opt))
+    plot_and_save()
