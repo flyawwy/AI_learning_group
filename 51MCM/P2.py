@@ -53,17 +53,35 @@ def branch3(t, a3, b3, t2, C3):
 
     return result
 
-def branch4(t, A, B, omega, phi):
-    return A * np.sin(omega * t + phi) + B
+# 傅里叶级数支路4
+# params_fourier: [N, T, A0, A1, ..., AN, B1, ..., BN]
+def branch4(t, params_fourier):
+    N = int(round(params_fourier[0]))  # 阶数取整
+    T = params_fourier[1]
+    A0 = params_fourier[2]
+    A = params_fourier[3:3+N]
+    B = params_fourier[3+N:3+2*N]
+    result = np.full_like(t, A0, dtype=float)
+    for n in range(1, N+1):
+        result += A[n-1] * np.cos(2 * np.pi * n * t / T) + B[n-1] * np.sin(2 * np.pi * n * t / T)
+    return result
 
+# 修改total_flow，适配新的支路4
+# params = [C1, a1, b1, a2, a3, b3, t2, C3, N, T, A0, A1...AN, B1...BN]
 def total_flow(t, params):
-    C1, a1, b1, a2, a3, b3, t2, C3, A, B, omega, phi = params
-    t_delayed = np.maximum(0, t - 2)  # 支路1和2延迟2分钟
+    C1, a1, b1, a2, a3, b3, t2, C3 = params[:8]
+    N = int(round(params[8]))
+    T = params[9]
+    A0 = params[10]
+    A = params[11:11+N]
+    B = params[11+N:11+2*N]
+    params_fourier = [N, T, A0] + list(A) + list(B)
+    t_delayed = np.maximum(0, t - 2)
     return (
         branch1(t_delayed, C1) +
         branch2(t_delayed, a1, b1, a2) +
         branch3(t, a3, b3, t2, C3) +
-        branch4(t, A, B, omega, phi)
+        branch4(t, params_fourier)
     )
 
 def objective(params, times, F_measured):
@@ -81,13 +99,32 @@ bounds = [
     (10, 20),
     (35, 45),
     (15, 20),
-    (5, 10),
-    (20, 25),
-    (0.4, 0.5),
-    (-np.pi, np.pi)
+    (1, 10),  # N的边界
+    (20, 30),  # T的边界
+    (0, 10),  # A0的边界
+    (-10, 10),  # A1的边界
+    (-10, 10),  # A2的边界
+    (-10, 10),  # A3的边界
+    (-10, 10),  # A4的边界
+    (-10, 10),  # A5的边界
+    (-10, 10),  # A6的边界
+    (-10, 10),  # A7的边界
+    (-10, 10),  # A8的边界
+    (-10, 10),  # A9的边界
+    (-10, 10),  # A10的边界
+    (-10, 10),  # B1的边界
+    (-10, 10),  # B2的边界
+    (-10, 10),  # B3的边界
+    (-10, 10),  # B4的边界
+    (-10, 10),  # B5的边界
+    (-10, 10),  # B6的边界
+    (-10, 10),  # B7的边界
+    (-10, 10),  # B8的边界
+    (-10, 10),  # B9的边界
+    (-10, 10),  # B10的边界
 ]
 
-initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 15., 7.4344, 20., 0.4583, -2.5121]
+initial_guess = [5.0008, 0.4548, 10., 0.2, 0.4856, 10.5713, 39.4208, 15., 5, 25, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
 def optimize():
     xopt_pso, fopt_pso = pso(objective, lb=[b[0] for b in bounds], ub=[b[1] for b in bounds],
@@ -103,11 +140,17 @@ print("最终最小误差:", best_error)
 
 def compute_branch_flows(t, params):
     t_array = np.array([t]) if np.isscalar(t) else np.array(t)
+    N = int(round(params[8]))
+    T = params[9]
+    A0 = params[10]
+    A = params[11:11+N]
+    B = params[11+N:11+2*N]
+    params_fourier = [N, T, A0] + list(A) + list(B)
     flows = {
         "Branch1": branch1(t_array - 2, params[0]),
         "Branch2": branch2(t_array - 2, *params[1:4]),
         "Branch3": branch3(t_array, *params[4:8]),
-        "Branch4": branch4(t_array, *params[8:])
+        "Branch4": branch4(t_array, params_fourier)
     }
     return {k: v[0] if np.isscalar(t) else v for k, v in flows.items()}
 
@@ -134,16 +177,25 @@ def format_expression_branch3(a3, b3, t2, C3):
             f"{C3:.2f}, & t \\geq {int(t2)} "
             "\\end{cases}")
 
-def format_expression_branch4(A, B, omega, phi):
-    return f"支路4: f(t) = {A:.2f} \\cdot \\sin({omega:.2f}t + {phi:.2f}) + {B:.2f}"
+def format_expression_branch4_fourier(N, T, A0, A, B):
+    terms = [f"{A0:.2f}"]
+    for n in range(1, N+1):
+        terms.append(f"{A[n-1]:.2f} \\cos\\left(\\frac{{2\\pi {n} t}}{{{T}}}\\right)")
+        terms.append(f"{B[n-1]:.2f} \\sin\\left(\\frac{{2\\pi {n} t}}{{{T}}}\\right)")
+    return f"支路4: f(t) = " + " + ".join(terms)
 
-C1_opt, a1_opt, b1_opt, a2_opt, a3_opt, b3_opt, t2_opt, C3_opt, A_opt, B_opt, omega_opt, phi_opt = best_params
+C1_opt, a1_opt, b1_opt, a2_opt, a3_opt, b3_opt, t2_opt, C3_opt = best_params[:8]
+N_opt = int(round(best_params[8]))
+T_opt = best_params[9]
+A0_opt = best_params[10]
+A_opt = best_params[11:11+N_opt]
+B_opt = best_params[11+N_opt:11+2*N_opt]
 
 print("\n--- 各支路车流量函数表达式 ---")
 print(format_expression_branch1(C1_opt))
 print(format_expression_branch2(a1_opt, b1_opt, a2_opt))
 print(format_expression_branch3(a3_opt, b3_opt, t2_opt, C3_opt))
-print(format_expression_branch4(A_opt, B_opt, omega_opt, phi_opt))
+print(format_expression_branch4_fourier(N_opt, T_opt, A0_opt, A_opt, B_opt))
 
 # 绘图
 predicted_F = total_flow(times, best_params)
