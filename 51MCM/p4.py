@@ -23,7 +23,7 @@ class TrafficAnalysisSystem:
 
     def _load_dataset(self):
         """加载并预处理交通流量数据（方法1：数据平滑）"""
-        df = pd.read_excel('C:\\Users\Lenovo\Desktop\\2025-51MCM-Problem A\附件(Attachment).xlsx',
+        df = pd.read_excel('.\\2025-51MCM-Problem A\附件(Attachment).xlsx',
                            sheet_name='表4 (Table 4)')
         time_points = df['时间 t (Time t)'].values
         flow_data = df['主路4的车流量 (Traffic flow on the Main road 4)'].values
@@ -55,8 +55,8 @@ class TrafficAnalysisSystem:
         """计算各支路流量"""
         # 参数解包
         a_params = params[:10]
-        b_params = params[10:17]
-        c_params = params[17:]
+        b_params = params[10:15]
+        c_params = params[15:]
 
         # 支路1流量计算
         flow1 = self._compute_flow1(t_array, a_params)
@@ -93,8 +93,10 @@ class TrafficAnalysisSystem:
 
     def _compute_flow2(self, t, params):
         """计算支路2流量"""
-        b1, b2, b3, b4, b5, brk5, brk6 = params
+        b1, b2, b3, b4, b5 = params
         result = np.zeros_like(t, dtype=float)
+        brk5 =35
+        brk6 = 47
 
         mask = t <= brk5
         result[mask] = b1 * t[mask] + b2
@@ -112,8 +114,8 @@ class TrafficAnalysisSystem:
         signal_states = self._get_signal_states(t)
         result = np.zeros_like(t, dtype=float)
 
-        cycle_params = [(params[2 * i], params[2 * i + 1]) for i in range(5)]
-        cycle_starts = [self.FIRST_GREEN + i * self.CYCLE_LENGTH for i in range(5)]
+        cycle_params = [(params[2 * i], params[2 * i + 1]) for i in range(7)]
+        cycle_starts = [self.FIRST_GREEN + i * self.CYCLE_LENGTH for i in range(7)]
 
         for idx, start in enumerate(cycle_starts):
             mask = (t >= start) & (t < start + self.GREEN_DURATION) & signal_states
@@ -165,16 +167,19 @@ class TrafficAnalysisSystem:
         penalty += 1000 * (np.sum(np.abs(f1[f1 < 0])) +
                            np.sum(np.abs(f2[f2 < 0])) +
                            np.sum(np.abs(f3[f3 < 0])))
+        # 支路2二阶差分惩罚（平滑性）
+        f2_diff2 = np.abs(np.diff(f2, n=2))
+        penalty += 100 * np.sum(f2_diff2)
 
         # 连续性约束
         a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = params[:10]
-        b1, b2, b3, b4, b5, brk5, brk6 = params[10:17]
+        b1, b2, b3, b4, b5 = params[10:15]
 
         continuity_errors = [
             abs(a1 * (brk2 - brk1) + a2 - a4),
             abs(a3 * (brk3 - brk2) + a4 - a5),
             abs(a5 - a6 * 0),
-            abs(b1 * brk5 + b2 - b3),
+            abs(b1 * 35 + b2 - b3),
             abs(b3 - b5)
         ]
 
@@ -184,18 +189,17 @@ class TrafficAnalysisSystem:
     def optimize_model(self):
         """优化模型参数"""
         initial_guess = [
-            1.0, 0.0, -1.0, 30.0, 14.0, 0.0, 5.0, 12.0, 16.0, 47.0,
-            0.7, 10.0, 25.0, -1.0, 30.0, 25.0, 44.0,
-            7.0, 1.0, 6.0, 20.0, 10.0, 18.0, 10.0, 20.0, 5.0, 23.0
+            2.0, 30.0, -1.0, 20.0, 30.0, -1.0, 7.0, 20.0, 30.0, 42.0,
+            0.5, 0.0, 40.0, -1.0, 20.0,
+            1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0
         ]
 
         param_bounds = [
-            (0.1, 6.0), (0.0, 9.0), (-5.0, -0.1), (20.0, 40.0), (15.0, 30.0), (-5.0, -0.1),
-            (3.0, 8.0), (7.0, 15.0), (12.0, 15.0), (35.0, 50.0),
-            (0.1, 2.0), (5.0, 15.0), (20.0, 35.0), (-3.0, -0.1), (25.0, 40.0),
-            (20.0, 35.0), (35.0, 45.0),
-            (5.0, 20.0), (0.0, 30.0), (0.0, 20.0), (10.0, 40.0), (5.0, 25.0),
-            (10.0, 30.0), (5.0, 25.0), (10.0, 35.0), (0.0, 20.0), (10.0, 35.0)
+            (0.5, 2.0), (25.0, 40.0), (-5.0, -0.1), (25.0, 35.0), (25.0, 35.0), (-5.0, -0.1),
+            (5.0, 10.0), (19.0, 21.0), (25.0, 35.0), (40.0, 45.0),
+            (0.1, 2.0), (0.0, 5.0), (35.0, 45.0), (-2.0, -0.1), (15.0, 25.0),
+            (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),
+            (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0)
         ]
 
         optimization_result = minimize(
@@ -243,7 +247,7 @@ class TrafficAnalysisSystem:
         plt.plot(self.time_idx, f3, 'c-', label='支路3')
 
         # 标记绿灯时段
-        for i in range(6):
+        for i in range(7):
             start = self.FIRST_GREEN + i * self.CYCLE_LENGTH
             plt.axvspan(start, start + self.GREEN_DURATION, color='green', alpha=0.1)
 
