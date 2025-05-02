@@ -366,11 +366,11 @@ class TrafficAnalysisSystem:
             # 支路1流量模型表达式
             f.write("## 【支路1流量模型表达式】\n\n")
             f.write(r"$f_1(t) = \begin{cases} ")
-            f.write(f"0, & t < {a_params[6]:.1f} \\ ")
-            f.write(r"{a_params[0]:.4f} \cdot (t-{a_params[6]:.1f}) + {a_params[1]:.4f}, & {a_params[6]:.1f} \leq t < {a_params[7]:.1f} \\\\ ")
-            f.write(r"{a_params[2]:.4f} \cdot (t-{a_params[7]:.1f}) + {a_params[3]:.4f}, & {a_params[7]:.1f} \leq t < {a_params[8]:.1f} \\\\ ")
-            f.write(r"{a_params[4]:.4f}, & {a_params[8]:.1f} \leq t < {a_params[9]:.1f} \\\\ ")
-            f.write(r"{a_params[5]:.4f} \cdot (t-{a_params[9]:.1f}), & t \geq {a_params[9]:.1f} ")
+            f.write(f"0, & t < {a_params[6]:.1f} \\\\ ")
+            f.write(f"{a_params[0]:.4f} \\cdot (t-{a_params[6]:.1f}) + {a_params[1]:.4f}, & {a_params[6]:.1f} \\leq t < {a_params[7]:.1f} \\\\ ")
+            f.write(f"{a_params[2]:.4f} \\cdot (t-{a_params[7]:.1f}) + {a_params[3]:.4f}, & {a_params[7]:.1f} \\leq t < {a_params[8]:.1f} \\\\ ")
+            f.write(f"{a_params[4]:.4f}, & {a_params[8]:.1f} \\leq t < {a_params[9]:.1f} \\\\ ")
+            f.write(f"{a_params[5]:.4f} \\cdot (t-{a_params[9]:.1f}), & t \\geq {a_params[9]:.1f} ")
             f.write(r"\end{cases}$")
             f.write('\n\n')
 
