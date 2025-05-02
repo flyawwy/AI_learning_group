@@ -390,7 +390,7 @@ class TrafficAnalysisSystem:
                 start = self.FIRST_GREEN + i * self.CYCLE_LENGTH
                 end = start + self.GREEN_DURATION
                 slope, intercept = c_params[2*i], c_params[2*i+1]
-                f.write(r"{slope:.4f} \cdot (t-{start}) + {intercept:.4f}, & t \in [{start}, {end}) \text{{ 且为绿灯时段}} \\ ")
+                f.write(f"{slope:.4f} \\cdot (t-{start}) + {intercept:.4f}, & t \\in [{start}, {end}) \\text{{ 且为绿灯时段}} \\\\ ")
             f.write(r"0, & \text{其他时段（红灯）} \end{cases}$")
             f.write('\n\n')
 
