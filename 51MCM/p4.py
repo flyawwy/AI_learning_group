@@ -18,7 +18,7 @@ class TrafficAnalysisSystem:
         self.RED_DURATION = 4
         self.GREEN_DURATION = 5
         self.CYCLE_LENGTH = self.RED_DURATION + self.GREEN_DURATION
-        # FIRST_GREEN和TRAVEL_DELAY将作为可优化参数，在optimize_model中设置
+        # FIRST_GREEN将作为可优化参数，在optimize_model中设置
         # 这里只是初始化变量，但不赋初始值
 
     def _load_dataset(self):
@@ -54,14 +54,13 @@ class TrafficAnalysisSystem:
     def _calculate_branch_flows(self, t_array, params):
         """计算各支路流量"""
         # 参数解包
-        # 最后两个参数为FIRST_GREEN和TRAVEL_DELAY
-        self.FIRST_GREEN = params[-2]
-        self.TRAVEL_DELAY = params[-1]
+        # 最后一个参数为FIRST_GREEN
+        self.FIRST_GREEN = params[-1]
 
         # 其他参数解包
         a_params = params[:10]
         b_params = params[10:15]
-        c_params = params[15:-2]
+        c_params = params[15:-1]
 
         # 支路1流量计算
         flow1 = self._compute_flow1(t_array, a_params)
@@ -133,20 +132,9 @@ class TrafficAnalysisSystem:
         """计算主路流量"""
         f1, f2, f3 = self._calculate_branch_flows(t_array, params)
 
-        f1_delayed = np.zeros_like(t_array)
-        f2_delayed = np.zeros_like(t_array)
-
-        # 将TRAVEL_DELAY转换为整数用于索引
-        travel_delay_idx = int(self.TRAVEL_DELAY)
-
-        valid_idx = t_array >= self.TRAVEL_DELAY
-        f1_delayed[valid_idx] = f1[np.where(valid_idx)[0] - travel_delay_idx]
-        f2_delayed[valid_idx] = f2[np.where(valid_idx)[0] - travel_delay_idx]
-
-        f1_delayed[~valid_idx] = f1[0]
-        f2_delayed[~valid_idx] = f2[0]
-
-        return f1_delayed + f2_delayed + f3
+        # 移除支路1和2的延迟处理，直接使用原始流量
+        # 根据题目要求，不考虑行驶延迟
+        return f1 + f2 + f3
 
     def _huber_loss(self, errors, delta=1.0):
         """Huber损失函数（方法2：鲁棒性优化）"""
@@ -156,74 +144,171 @@ class TrafficAnalysisSystem:
         return 0.5 * quadratic ** 2 + delta * linear
 
     def _evaluate_model(self, params):
-        """评估模型性能（使用Huber损失）"""
+        """评估模型性能（使用加权Huber损失）"""
         predicted = self._calculate_main_flow(self.time_idx, params)
-        # 方法2：使用Huber损失代替MSE
-        error = np.mean(self._huber_loss(predicted - self.actual_flow, delta=1.0))
+        errors = predicted - self.actual_flow
+
+        # 使用加权Huber损失，对不同时间段赋予不同权重
+        # 创建时间段权重，高峰期权重更高
+        time_weights = np.ones_like(self.time_idx, dtype=float)
+        # 早高峰(7:20-8:00)权重增加
+        time_weights[(self.time_idx >= 10) & (self.time_idx <= 30)] = 1.5
+        # 晚高峰(8:00-8:40)权重增加
+        time_weights[(self.time_idx >= 30) & (self.time_idx <= 50)] = 1.5
+
+        # 计算加权Huber损失
+        weighted_errors = [time_weights[i] * self._huber_loss(errors[i], delta=1.5) for i in range(len(errors))]
+        error = np.mean(weighted_errors)
 
         # 约束条件处理
         penalty = self._compute_penalty(params)
 
-        return error + penalty
+        # 添加全局平滑性约束
+        predicted_diff = np.abs(np.diff(predicted))
+        smoothness_penalty = 50 * np.sum(np.where(predicted_diff > 10, predicted_diff - 10, 0))
+
+        return error + penalty + smoothness_penalty
 
     def _compute_penalty(self, params):
         """计算约束惩罚项"""
         f1, f2, f3 = self._calculate_branch_flows(self.time_idx, params)
         penalty = 0
 
-        # 非负约束
-        penalty += 1000 * (np.sum(np.abs(f1[f1 < 0])) +
+        # 非负约束 - 增加惩罚权重
+        penalty += 2000 * (np.sum(np.abs(f1[f1 < 0])) +
                            np.sum(np.abs(f2[f2 < 0])) +
                            np.sum(np.abs(f3[f3 < 0])))
-        # 支路2二阶差分惩罚（平滑性）
-        f2_diff2 = np.abs(np.diff(f2, n=2))
-        penalty += 100 * np.sum(f2_diff2)
 
-        # 连续性约束
+        # 支路1流量特征约束 - 确保符合"无车流量→线性增长→稳定→线性减少至无车流量"的趋势
         a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = params[:10]
+        # 确保a1为正（线性增长）
+        penalty += 1000 * max(0, -a1)
+        # 确保a3为负（线性减少）
+        penalty += 1000 * max(0, a3)
+        # 确保a6为负（线性减少至无车流量）
+        penalty += 1000 * max(0, a6)
+
+        # 支路2流量特征约束 - 确保在特定时间段内线性增长、稳定和线性减少
         b1, b2, b3, b4, b5 = params[10:15]
+        # 确保b1为正（线性增长）
+        penalty += 1000 * max(0, -b1)
+        # 确保b4为负（线性减少）
+        penalty += 1000 * max(0, b4)
 
+        # 支路2二阶差分惩罚（平滑性）- 增加权重
+        f2_diff2 = np.abs(np.diff(f2, n=2))
+        penalty += 200 * np.sum(f2_diff2)
+
+        # 支路3流量特征约束 - 确保在绿灯时段有合理的流量变化
+        c_params = params[15:-1]
+        for i in range(7):
+            slope, intercept = c_params[2*i], c_params[2*i+1]
+            # 确保截距非负
+            penalty += 500 * max(0, -intercept)
+            # 限制斜率变化范围
+            penalty += 100 * max(0, abs(slope) - 2.5)
+
+        # 连续性约束 - 增加权重
         continuity_errors = [
-            abs(a1 * (brk2 - brk1) + a2 - a4),
-            abs(a3 * (brk3 - brk2) + a4 - a5),
-            abs(a5 - a6 * 0),
-            abs(b1 * 35 + b2 - b3),
-            abs(b3 - b5)
+            abs(a1 * (brk2 - brk1) + a2 - a4),  # 支路1第一段与第二段的连续性
+            abs(a3 * (brk3 - brk2) + a4 - a5),  # 支路1第二段与第三段的连续性
+            abs(a5 - a6 * 0),                   # 支路1第三段与第四段的连续性
+            abs(b1 * 17 + b2 - b3),             # 支路2第一段与第二段的连续性
+            abs(b3 - b4 * 0 - b5)               # 支路2第二段与第三段的连续性
         ]
+        penalty += 1500 * sum(continuity_errors)
 
-        penalty += 1000 * sum(continuity_errors)
+        # 转折点顺序约束
+        order_errors = [
+            max(0, brk1 - brk2),  # 确保 brk1 < brk2
+            max(0, brk2 - brk3),  # 确保 brk2 < brk3
+            max(0, brk3 - brk4)   # 确保 brk3 < brk4
+        ]
+        penalty += 2000 * sum(order_errors)
+
         return penalty
 
     def optimize_model(self):
         """优化模型参数"""
-        # 初始参数设置，添加FIRST_GREEN和TRAVEL_DELAY作为可优化参数
+        # 初始参数设置，添加FIRST_GREEN作为可优化参数
         initial_guess = [
             2.0, 30.0, -1.0, 20.0, 30.0, -1.0, 7.0, 20.0, 30.0, 42.0,
             0.5, 0.0, 40.0, -1.0, 20.0,
             1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0,
-            3.0, 1.0  # FIRST_GREEN和TRAVEL_DELAY的初始值
+            3.0  # FIRST_GREEN的初始值
         ]
 
+        # 扩大参数边界范围，提高搜索精度
         param_bounds = [
-            (0.5, 2.0), (25.0, 40.0), (-5.0, -0.1), (25.0, 35.0), (25.0, 35.0), (-5.0, -0.1),
-            (5.0, 10.0), (19.0, 21.0), (25.0, 35.0), (40.0, 45.0),
-            (0.1, 2.0), (0.0, 5.0), (35.0, 45.0), (-2.0, -0.1), (15.0, 25.0),
-            (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),
-            (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0),
-            (2.0, 5.0), (0.5, 2.0)  # FIRST_GREEN和TRAVEL_DELAY的边界
+            # 支路1参数边界 - 扩大搜索范围
+            (0.3, 3.0), (20.0, 45.0), (-6.0, -0.05), (20.0, 40.0), (20.0, 40.0), (-6.0, -0.05),
+            (3.0, 12.0), (15.0, 25.0), (20.0, 40.0), (35.0, 50.0),
+            # 支路2参数边界 - 扩大搜索范围
+            (0.05, 3.0), (0.0, 10.0), (30.0, 50.0), (-3.0, -0.05), (10.0, 30.0),
+            # 支路3参数边界 - 调整以适应绿灯周期
+            (0.0, 3.0), (0.0, 40.0), (0.0, 3.0), (0.0, 40.0), (0.0, 3.0), (0.0, 40.0),
+            (0.0, 3.0), (0.0, 40.0), (0.0, 3.0), (0.0, 40.0), (0.0, 3.0), (0.0, 40.0),
+            (0.0, 3.0), (0.0, 40.0),
+            # FIRST_GREEN的边界 - 扩大搜索范围
+            (0.0, 8.0)
         ]
 
-        optimization_result = minimize(
+        # 尝试多次优化，选择最佳结果
+        best_error = float('inf')
+        best_params = None
+        best_result = None
+
+        # 使用不同的初始点和优化方法进行多次优化
+        for attempt in range(5):  # 增加尝试次数
+            # 在初始猜测附近随机扰动
+            perturbed_guess = np.array(initial_guess) * (1 + 0.15 * np.random.randn(len(initial_guess)))
+
+            # 确保扰动后的参数仍在边界内
+            for i, (lb, ub) in enumerate(param_bounds):
+                perturbed_guess[i] = max(lb, min(ub, perturbed_guess[i]))
+
+            # 选择不同的优化方法
+            if attempt % 2 == 0:
+                method = 'L-BFGS-B'
+                options = {'maxiter': 1000, 'gtol': 1e-6}
+            else:
+                method = 'SLSQP'
+                options = {'maxiter': 1000, 'ftol': 1e-6}
+
+            # 执行优化
+            optimization_result = minimize(
+                self._evaluate_model,
+                perturbed_guess,
+                method=method,
+                bounds=param_bounds,
+                options=options
+            )
+
+            # 更新最佳结果
+            if optimization_result.fun < best_error:
+                best_error = optimization_result.fun
+                best_params = optimization_result.x
+                best_result = optimization_result
+
+        # 使用最佳参数进行一次最终优化
+        final_result = minimize(
             self._evaluate_model,
-            initial_guess,
+            best_params,
             method='L-BFGS-B',
-            bounds=param_bounds
+            bounds=param_bounds,
+            options={'maxiter': 2000, 'gtol': 1e-8}  # 增加迭代次数和精度
         )
 
-        self.optimal_params = optimization_result.x
+        if final_result.fun < best_error:
+            self.optimal_params = final_result.x
+        else:
+            self.optimal_params = best_params
+
+        # 计算最终的预测流量和误差
         self.predicted_flow = self._calculate_main_flow(self.time_idx, self.optimal_params)
         self.model_error = np.sqrt(np.mean((self.predicted_flow - self.actual_flow) ** 2))
 
+        # 计算各支路流量
         f1, f2, f3 = self._calculate_branch_flows(self.time_idx, self.optimal_params)
         self.branch_flows = (f1, f2, f3)
 
@@ -273,7 +358,7 @@ class TrafficAnalysisSystem:
         """生成分析报告"""
         a_params = self.optimal_params[:10]
         b_params = self.optimal_params[10:15]
-        c_params = self.optimal_params[15:-2]  # 排除最后两个参数(FIRST_GREEN和TRAVEL_DELAY)
+        c_params = self.optimal_params[15:-1]  # 排除最后一个参数(FIRST_GREEN)
 
         # 计算特定时间点流量
         t1, t2 = 15, 45  # 7:30和8:30对应的时间索引
@@ -306,10 +391,9 @@ class TrafficAnalysisSystem:
             f.write(f"| 8:00-8:30 | {segment_errors[2]:.4f} |\n")
             f.write(f"| 8:30-8:58 | {segment_errors[3]:.4f} |\n\n")
 
-            # 优化后的信号灯和延迟参数
+            # 优化后的信号灯参数
             f.write("## 【优化后的系统参数】\n\n")
-            f.write(f"第一个绿灯开始时间: {self.optimal_params[-2]:.4f}\n")
-            f.write(f"支路1和支路2的行驶延迟: {self.optimal_params[-1]:.4f}\n\n")
+            f.write(f"第一个绿灯开始时间: {self.optimal_params[-1]:.4f}\n\n")
 
             f.write("## 【支路1模型参数】\n\n")
             f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
