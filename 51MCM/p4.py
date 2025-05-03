@@ -1132,8 +1132,21 @@ class TrafficAnalysisSystem:
             f.write(f"| 8:30 | {f1_830[0]:5.2f} | {f2_830[0]:5.2f} | {f3_830[0]:5.2f} | {main_flow_830:8.2f} | {self.actual_flow[t2]:8.2f} |\n")
 
 
-if __name__ == "__main__":
+def main():
+    """主函数"""
+    # 创建分析系统实例
     analyzer = TrafficAnalysisSystem()
+
+    # 优化模型参数
     analyzer.optimize_model()
-    analyzer.generate_report()
+
+    # 可视化结果
     analyzer.visualize_results()
+
+    # 生成分析报告
+    analyzer.generate_report()
+
+    print("问题4分析完成！结果保存在./P4目录")
+
+if __name__ == "__main__":
+    main()
