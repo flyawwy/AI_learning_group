@@ -22,6 +22,13 @@ class TrafficAnalysisSystem:
         self.FIRST_GREEN = 3  # 第一个绿灯于7:06开始亮起，对应时间索引3
         self.TRAVEL_DELAY = 1  # 支路1和支路2的行驶时间为2分钟，对应时间索引延迟1（因为每个时间单位为2分钟）
 
+        # 根据题目描述，支路2的特定转折点是已知的
+        self.BRANCH2_STABILIZE = 35  # 8:10对应的时间索引
+        self.BRANCH2_DECREASE = 47   # 8:34对应的时间索引
+
+        # 支路1的最后减少阶段起始点
+        self.BRANCH1_FINAL_DECREASE = 53  # 根据数据分析确定的时间点
+
     def _load_dataset(self):
         """加载交通流量数据"""
         df = pd.read_excel('.\\2025-51MCM-Problem A\附件(Attachment).xlsx',sheet_name='表3 (Table 3)')
@@ -58,9 +65,9 @@ class TrafficAnalysisSystem:
     def _calculate_branch_flows(self, t_array, params):
         """计算各支路流量"""
         # 参数解包
-        a_params = params[:10]
-        b_params = params[10:17]
-        c_params = params[17:]
+        a_params = params[:7]  # 支路1参数
+        b_params = params[7:10]  # 支路2参数
+        c_params = params[10:]  # 支路3参数
 
         # 支路1流量计算
         flow1 = self._compute_flow1(t_array, a_params)
@@ -74,45 +81,56 @@ class TrafficAnalysisSystem:
         return flow1, flow2, flow3
 
     def _compute_flow1(self, t, params):
-        """计算支路1流量"""
-        a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = params
+        """计算支路1流量 - "无车流量→增长→减少→稳定→减少至无车流量"模式"""
+        a1, a2, a3, a4, brk1, brk2, brk3 = params
         result = np.zeros_like(t, dtype=float)
 
+        # 无车流量阶段
         mask = t < brk1
         result[mask] = 0
 
+        # 增长阶段
         mask = (t >= brk1) & (t < brk2)
-        result[mask] = a1 * (t[mask] - brk1) + a2
+        result[mask] = a1 * (t[mask] - brk1)  # 从0开始增长
 
+        # 减少阶段
         mask = (t >= brk2) & (t < brk3)
-        result[mask] = a3 * (t[mask] - brk2) + a4
+        # 确保连续性
+        peak_value = a1 * (brk2 - brk1)
+        result[mask] = a2 * (t[mask] - brk2) + peak_value
 
-        mask = (t >= brk3) & (t < brk4)
-        result[mask] = a5
+        # 稳定阶段
+        mask = (t >= brk3) & (t < self.BRANCH1_FINAL_DECREASE)
+        result[mask] = a3
 
-        mask = (t >= brk4)
-        result[mask] = a6 * (t[mask] - brk4)+a5
+        # 减少至无车流量阶段
+        mask = t >= self.BRANCH1_FINAL_DECREASE
+        result[mask] = a4 * (t[mask] - self.BRANCH1_FINAL_DECREASE) + a3
 
         return np.maximum(result, 0)
 
     def _compute_flow2(self, t, params):
-        """计算支路2流量"""
-        b1, b2, b3, b4, b5, brk5, brk6 = params
+        """计算支路2流量 - 线性增长、稳定、线性减少模式"""
+        b1, b2, b3 = params
         result = np.zeros_like(t, dtype=float)
 
-        mask = t <= brk5
+        # 线性增长阶段 [6:58-8:10]
+        mask = t <= self.BRANCH2_STABILIZE
         result[mask] = b1 * t[mask] + b2
 
-        mask = (t > brk5) & (t <= brk6)
-        result[mask] = b3
+        # 稳定阶段 (8:10-8:34)
+        mask = (t > self.BRANCH2_STABILIZE) & (t <= self.BRANCH2_DECREASE)
+        stable_value = b1 * self.BRANCH2_STABILIZE + b2
+        result[mask] = stable_value
 
-        mask = t > brk6
-        result[mask] = b4 * (t[mask] - brk6) + b5
+        # 线性减少阶段 [8:34-8:58]
+        mask = t > self.BRANCH2_DECREASE
+        result[mask] = b3 * (t[mask] - self.BRANCH2_DECREASE) + stable_value
 
         return np.maximum(result, 0)
 
     def _compute_flow3(self, t, params):
-        """计算支路3流量"""
+        """计算支路3流量 - 仅在绿灯时有流量"""
         # 支路3只在绿灯时有流量，红灯时为0
         signal_states = self._get_signal_states(t)
         result = np.zeros_like(t, dtype=float)
@@ -170,25 +188,22 @@ class TrafficAnalysisSystem:
                            np.sum(np.abs(f2[f2 < 0])) +
                            np.sum(np.abs(f3[f3 < 0])))
 
-        # 连续性约束
-        a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = params[:10]
-        b1, b2, b3, b4, b5, brk5, brk6 = params[10:17]
+        # 连续性约束 - 支路1
+        a1, a2, a3, a4, brk1, brk2, brk3 = params[:7]
 
-        # 支路1的连续性约束
+        # 支路1的特定模式要求
+        peak_value = a1 * (brk2 - brk1)
+        stable_value = a2 * (brk3 - brk2) + peak_value
+
         continuity_errors = [
-            abs(a1 * (brk2 - brk1) + a2 - a4),  # 第一段末尾与第二段开始的连续性
-            abs(a3 * (brk3 - brk2) + a4 - a5),  # 第二段末尾与第三段的连续性
-            abs(a5 - a6 * 0),                   # 第三段与第四段的连续性
-            abs(b1 * brk5 + b2 - b3),           # 支路2第一段与第二段的连续性
-            abs(b3 - b5)                         # 支路2第二段与第三段的连续性
+            abs(stable_value - a3),  # 确保稳定值正确连接
         ]
 
         # 增加对转折点顺序的约束
         order_errors = [
             max(0, brk1 - brk2),  # 确保 brk1 < brk2
             max(0, brk2 - brk3),  # 确保 brk2 < brk3
-            max(0, brk3 - brk4),  # 确保 brk3 < brk4
-            max(0, brk5 - brk6)   # 确保 brk5 < brk6
+            max(0, brk3 - self.BRANCH1_FINAL_DECREASE)  # 确保 brk3 < 最后减少开始点
         ]
 
         penalty += 1500 * sum(continuity_errors) + 2000 * sum(order_errors)
@@ -197,51 +212,89 @@ class TrafficAnalysisSystem:
 
     def optimize_model(self):
         """优化模型参数"""
-        # 根据问题描述和数据特征调整初始参数
+        # 根据新的参数结构调整初始猜测
         initial_guess = [
-            2.0, 0.0, -1.5, 45.0, 30.0, -2, 5.0, 15.0, 20.0, 47.0,  # 支路1参数
-            0.8, 8.0, 40.0, -1.2, 30.0, 25.0, 44.0,                  # 支路2参数
-            1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 25.0, 1.0, 30.0, 1.0, 20.0, 1.0, 20.0 # 支路3参数
+            2.0, -1.5, 30.0, -2.0, 5.0, 15.0, 25.0,  # 支路1参数 (a1,a2,a3,a4,brk1,brk2,brk3)
+            0.8, 8.0, -1.2,                          # 支路2参数 (b1,b2,b3)
+            1.0, 20.0, 2.0, 20.0, 2.0, 20.0, 2.0, 25.0, 0.8, 30.0, 1.0, 20.0, 1.0, 20.0 # 支路3参数
         ]
 
-        # 根据问题描述调整参数边界
+        # 根据新的参数结构调整参数边界
         param_bounds = [
             # 支路1参数边界
-            (0.5, 8.0), (0.0, 10.0), (-5.0, -0.5), (45.0, 55.0), (25.0, 35.0), (-3.0, -0.1),
-            (3.0, 8.0), (15.0, 20.0), (20.0, 30.0), (35.0, 55.0),
-            # 支路2参数边界
-            (0.3, 2.5), (5.0, 15.0), (40.0, 50.0), (-3.0, -0.5), (25.0, 40.0),
-            (20.0, 35.0), (35.0, 50.0),
-            # 支路3参数边界 - 调整以适应绿灯周期
-            (0.0, 3.0), (20.0, 40.0), (0.0, 3.0), (20.0, 40.0), (0.0, 3.0),
-            (20.0, 40.0), (0.0, 2.0), (20.0, 40.0), (0.0, 2.0), (15.0, 30.0),
-            (0.0, 2.0), (15.0, 30.0), (0.0, 2.0), (15.0, 30.0)
+            (0.1, 10.0),    # a1: 增长斜率
+            (-8.0, -0.1),   # a2: 减少斜率1
+            (20.0, 45.0),   # a3: 稳定值
+            (-5.0, -0.1),   # a4: 减少斜率2
+            (1.0, 12.0),    # brk1: 第一个转折点
+            (8.0, 22.0),    # brk2: 第二个转折点
+            (18.0, 35.0),   # brk3: 第三个转折点
+
+            # 支路2参数边界 - 转折点已固定
+            (0.1, 3.5),     # b1: 增长斜率
+            (2.0, 18.0),    # b2: 截距
+            (-5.0, -0.1),   # b3: 减少斜率
+
+            # 支路3参数边界
+            (0.0, 5.0), (15.0, 50.0),   # 周期1斜率和截距
+            (0.0, 5.0), (15.0, 50.0),   # 周期2斜率和截距
+            (0.0, 5.0), (15.0, 50.0),   # 周期3斜率和截距
+            (0.0, 5.0), (15.0, 50.0),   # 周期4斜率和截距
+            (0.0, 5.0), (15.0, 50.0),   # 周期5斜率和截距
+            (0.0, 5.0), (10.0, 40.0),   # 周期6斜率和截距
+            (0.0, 5.0), (10.0, 40.0)    # 周期7斜率和截距
+        ]
+
+        # 创建多个不同的初始猜测点
+        initial_guesses = [
+            # 原始猜测
+            initial_guess,
+
+            # 支路1侧重的初始点
+            [3.5, -2.0, 35.0, -1.5, 4.0, 18.0, 28.0] + initial_guess[7:],
+
+            # 支路2侧重的初始点
+            initial_guess[:7] + [1.2, 10.0, -2.0] + initial_guess[10:],
+
+            # 支路3侧重的初始点
+            initial_guess[:10] + [2.0, 25.0, 2.5, 25.0, 3.0, 25.0, 2.5, 30.0, 1.5, 35.0, 1.0, 25.0, 1.0, 25.0],
+
+            # 基于当前最优解的初始点
+            [3.6542, -1.3171, 28.9160, -2.0989, 4.9, 15.3, 22.2,
+             0.9182, 8.1058, -1.3577,
+             1.2931, 20.6360, 2.2426, 20.8042, 2.4467, 21.1739, 1.9253, 26.5885,
+             0.6384, 28.7363, 0.6949, 18.6972, 0.6935, 17.8120]
         ]
 
         # 尝试多次优化，选择最佳结果
         best_error = float('inf')
         best_params = None
 
-        # 使用不同的初始点进行多次优化
-        for _ in range(3):
-            # 在初始猜测附近随机扰动
-            perturbed_guess = np.array(initial_guess) * (1 + 0.1 * np.random.randn(len(initial_guess)))
+        # 使用多个初始点进行优化
+        for base_guess in initial_guesses:
+            # 对每个基础初始点尝试多次随机扰动
+            for _ in range(3):
+                # 在初始猜测附近随机扰动
+                perturbed_guess = np.array(base_guess) * (1 + 0.15 * np.random.randn(len(base_guess)))
 
-            # 确保扰动后的参数仍在边界内
-            for i, (lb, ub) in enumerate(param_bounds):
-                perturbed_guess[i] = max(lb, min(ub, perturbed_guess[i]))
+                # 确保扰动后的参数仍在边界内
+                for i, (lb, ub) in enumerate(param_bounds):
+                    perturbed_guess[i] = max(lb, min(ub, perturbed_guess[i]))
 
-            optimization_result = minimize(
-                self._evaluate_model,
-                perturbed_guess,
-                method='L-BFGS-B',
-                bounds=param_bounds,
-                options={'maxiter': 1000, 'gtol': 1e-6}
-            )
+                # 使用不同的优化器尝试
+                for method in ['L-BFGS-B', 'TNC']:
+                    optimization_result = minimize(
+                        self._evaluate_model,
+                        perturbed_guess,
+                        method=method,
+                        bounds=param_bounds,
+                        options={'maxiter': 1500, 'gtol': 1e-7}
+                    )
 
-            if optimization_result.fun < best_error:
-                best_error = optimization_result.fun
-                best_params = optimization_result.x
+                    if optimization_result.fun < best_error:
+                        best_error = optimization_result.fun
+                        best_params = optimization_result.x
+                        print(f"发现更优解: RMSE={np.sqrt(best_error):.4f}")
 
         # 使用最佳参数
         self.optimal_params = best_params
@@ -251,9 +304,6 @@ class TrafficAnalysisSystem:
         self.model_error = np.sqrt(np.mean((self.predicted_flow - self.actual_flow) ** 2))
 
         # 计算各支路流量
-        f1, f2, f3 = self._calculate_branch_flows(self.time_idx, self.optimal_params)
-        self.branch_flows = (f1, f2, f3)
-
         f1, f2, f3 = self._calculate_branch_flows(self.time_idx, self.optimal_params)
         self.branch_flows = (f1, f2, f3)
 
@@ -278,8 +328,7 @@ class TrafficAnalysisSystem:
     def _plot_branch_flows(self):
         """绘制支路流量图"""
         f1, f2, f3 = self.branch_flows
-        a_params = self.optimal_params[:10]
-        b_params = self.optimal_params[10:17]
+        a_params = self.optimal_params[:7]  # 更新为7个参数
 
         plt.figure(figsize=(14, 8))
         plt.plot(self.time_idx, f1, 'g-', label='支路1')
@@ -287,10 +336,15 @@ class TrafficAnalysisSystem:
         plt.plot(self.time_idx, f3, 'c-', label='支路3')
 
         # 标记转折点
-        for i, brk in enumerate(a_params[6:10]):
+        for i, brk in enumerate(a_params[4:7]):
             plt.axvline(x=brk, color='g', ls='--', alpha=0.3)
-        for brk in b_params[5:7]:
-            plt.axvline(x=brk, color='m', ls='--', alpha=0.3)
+
+        # 标记支路1最后减少阶段开始点
+        plt.axvline(x=self.BRANCH1_FINAL_DECREASE, color='g', ls='--', alpha=0.3)
+
+        # 标记支路2的固定转折点
+        plt.axvline(x=self.BRANCH2_STABILIZE, color='m', ls='--', alpha=0.3)
+        plt.axvline(x=self.BRANCH2_DECREASE, color='m', ls='--', alpha=0.3)
 
         # 标记绿灯时段
         for i in range(7):
@@ -307,9 +361,9 @@ class TrafficAnalysisSystem:
 
     def generate_report(self):
         """生成分析报告"""
-        a_params = self.optimal_params[:10]
-        b_params = self.optimal_params[10:17]
-        c_params = self.optimal_params[17:]
+        a_params = self.optimal_params[:7]   # 更新为7个参数
+        b_params = self.optimal_params[7:10] # 更新为3个参数
+        c_params = self.optimal_params[10:]  # 支路3参数不变
 
         # 计算特定时间点流量
         t1, t2 = 15, 45  # 7:30和8:30对应的时间索引
@@ -341,20 +395,18 @@ class TrafficAnalysisSystem:
             # 支路1模型参数
             f.write("## 【支路1模型参数】\n\n")
             f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
-            f.write(f"初始值: {a_params[1]:.4f}\n")
-            f.write(f"下降阶段斜率1: {a_params[2]:.4f}\n")
-            f.write(f"稳定值: {a_params[4]:.4f}\n")
-            f.write(f"下降阶段斜率2: {a_params[5]:.4f}\n")
-            f.write(f"转折点: {a_params[6]:.1f}, {a_params[7]:.1f}, {a_params[8]:.1f}, {a_params[9]:.1f}\n\n")
+            f.write(f"减少阶段斜率1: {a_params[1]:.4f}\n")
+            f.write(f"稳定值: {a_params[2]:.4f}\n")
+            f.write(f"减少阶段斜率2: {a_params[3]:.4f}\n")
+            f.write(f"转折点: {a_params[4]:.1f}, {a_params[5]:.1f}, {a_params[6]:.1f}\n")
+            f.write(f"最后减少开始点: {self.BRANCH1_FINAL_DECREASE}\n\n")
 
             # 支路2模型参数
             f.write("## 【支路2模型参数】\n\n")
             f.write(f"增长斜率: {b_params[0]:.4f}\n")
             f.write(f"截距: {b_params[1]:.4f}\n")
-            f.write(f"稳定值: {b_params[2]:.4f}\n")
-            f.write(f"下降斜率: {b_params[3]:.4f}\n")
-            f.write(f"终值: {b_params[4]:.4f}\n")
-            f.write(f"转折点: {b_params[5]:.1f}, {b_params[6]:.1f}\n\n")
+            f.write(f"减少斜率: {b_params[2]:.4f}\n")
+            f.write(f"转折点(固定): {self.BRANCH2_STABILIZE} (8:10), {self.BRANCH2_DECREASE} (8:34)\n\n")
 
             # 支路3模型参数
             f.write("## 【支路3模型参数】\n\n")
@@ -366,20 +418,26 @@ class TrafficAnalysisSystem:
             # 支路1流量模型表达式
             f.write("## 【支路1流量模型表达式】\n\n")
             f.write(r"$f_1(t) = \begin{cases} ")
-            f.write(f"0, & t < {a_params[6]:.1f} \\\\ ")
-            f.write(f"{a_params[0]:.4f} \\cdot (t-{a_params[6]:.1f}) + {a_params[1]:.4f}, & {a_params[6]:.1f} \\leq t < {a_params[7]:.1f} \\\\ ")
-            f.write(f"{a_params[2]:.4f} \\cdot (t-{a_params[7]:.1f}) + {a_params[3]:.4f}, & {a_params[7]:.1f} \\leq t < {a_params[8]:.1f} \\\\ ")
-            f.write(f"{a_params[4]:.4f}, & {a_params[8]:.1f} \\leq t < {a_params[9]:.1f} \\\\ ")
-            f.write(f"{a_params[5]:.4f} \\cdot (t-{a_params[9]:.1f}), & t \\geq {a_params[9]:.1f} ")
+            f.write(f"0, & t < {a_params[4]:.1f} \\\\ ")
+            f.write(f"{a_params[0]:.4f} \\cdot (t-{a_params[4]:.1f}), & {a_params[4]:.1f} \\leq t < {a_params[5]:.1f} \\\\ ")
+
+            peak_value = a_params[0] * (a_params[5] - a_params[4])
+            f.write(f"{a_params[1]:.4f} \\cdot (t-{a_params[5]:.1f}) + {peak_value:.4f}, & {a_params[5]:.1f} \\leq t < {a_params[6]:.1f} \\\\ ")
+
+            stable_value = a_params[1] * (a_params[6] - a_params[5]) + peak_value
+            f.write(f"{a_params[2]:.4f}, & {a_params[6]:.1f} \\leq t < {self.BRANCH1_FINAL_DECREASE} \\\\ ")
+            f.write(f"{a_params[3]:.4f} \\cdot (t-{self.BRANCH1_FINAL_DECREASE}) + {a_params[2]:.4f}, & t \\geq {self.BRANCH1_FINAL_DECREASE} ")
             f.write(r"\end{cases}$")
             f.write('\n\n')
 
             # 支路2流量模型表达式
             f.write("## 【支路2流量模型表达式】\n\n")
             f.write(r"$f_2(t) = \begin{cases} ")
-            f.write(f"{b_params[0]:.4f} \\cdot t + {b_params[1]:.4f}, & t \\leq {b_params[5]:.1f} \\\\ ")
-            f.write(f"{b_params[2]:.4f}, & {b_params[5]:.1f} < t \\leq {b_params[6]:.1f} \\\\ ")
-            f.write(f"{b_params[3]:.4f} \\cdot (t-{b_params[6]:.1f}) + {b_params[4]:.4f}, & t > {b_params[6]:.1f} ")
+            f.write(f"{b_params[0]:.4f} \\cdot t + {b_params[1]:.4f}, & t \\leq {self.BRANCH2_STABILIZE} \\\\ ")
+
+            stable_value = b_params[0] * self.BRANCH2_STABILIZE + b_params[1]
+            f.write(f"{stable_value:.4f}, & {self.BRANCH2_STABILIZE} < t \\leq {self.BRANCH2_DECREASE} \\\\ ")
+            f.write(f"{b_params[2]:.4f} \\cdot (t-{self.BRANCH2_DECREASE}) + {stable_value:.4f}, & t > {self.BRANCH2_DECREASE} ")
             f.write(r"\end{cases}$")
             f.write('\n\n')
 
