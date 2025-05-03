@@ -211,12 +211,50 @@ class KeySamplingPointsAnalyzer:
             }
 
         else:  # P3模型
-            # 由于P3模型较复杂，这里提供一个简化版评估
-            # 实际应用中可能需要更复杂的评估方法
+            from p3 import TrafficAnalysisSystem
 
-            # 计算采样点覆盖的数据特征比例
+            # 如果没有提供原始参数，使用默认参数或重新拟合
+            if original_params is None:
+                # 创建交通分析系统并优化模型
+                traffic_system = TrafficAnalysisSystem()
+                traffic_system.optimize_model()
+                original_params = traffic_system.optimal_params
+
+            # 使用采样点拟合模型
+            sampled_times = self.times[self.sampling_indices]
             sampled_flow = self.flow_data[self.sampling_indices]
 
+            # 创建一个新的交通分析系统用于采样点拟合
+            sampled_system = TrafficAnalysisSystem()
+
+            # 保存原始数据
+            original_time_idx = sampled_system.time_idx
+            original_actual_flow = sampled_system.actual_flow
+
+            # 替换为采样点数据
+            sampled_system.time_idx = sampled_times
+            sampled_system.actual_flow = sampled_flow
+
+            # 优化采样点模型
+            sampled_system.optimize_model()
+            sampled_params = sampled_system.optimal_params
+
+            # 恢复原始数据用于评估
+            sampled_system.time_idx = original_time_idx
+            sampled_system.actual_flow = original_actual_flow
+
+            # 计算全部数据点的预测值
+            full_predicted = sampled_system._calculate_main_flow(self.times, original_params)
+            sampled_predicted = sampled_system._calculate_main_flow(self.times, sampled_params)
+
+            # 计算误差
+            full_error = np.mean((full_predicted - self.flow_data)**2)
+            sampled_error = np.mean((sampled_predicted - self.flow_data)**2)
+
+            # 计算参数差异
+            param_diff = np.mean(np.abs(np.array(original_params) - np.array(sampled_params)))
+
+            # 计算采样点覆盖的数据特征比例
             # 计算数据范围覆盖率
             full_range = np.max(self.flow_data) - np.min(self.flow_data)
             sampled_range = np.max(sampled_flow) - np.min(sampled_flow)
@@ -232,6 +270,13 @@ class KeySamplingPointsAnalyzer:
             change_coverage = covered_changes / len(significant_changes) if len(significant_changes) > 0 else 1.0
 
             return {
+                'full_error': full_error,
+                'sampled_error': sampled_error,
+                'param_diff': param_diff,
+                'full_params': original_params,
+                'sampled_params': sampled_params,
+                'full_predicted': full_predicted,
+                'sampled_predicted': sampled_predicted,
                 'range_coverage': range_coverage,
                 'change_coverage': change_coverage,
                 'sampling_efficiency': len(self.sampling_indices) / len(self.flow_data)

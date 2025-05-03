@@ -1,21 +1,21 @@
 # Result
 
-$ 支路1: f(t) = 7.20 （稳定） $
-$ 支路2: f(t) = \begin{cases} 0.42t + 15.43, & t < 24 \\ 25.56, & 24 \leq t < 37 \\ -0.22t + 33.73, & t \geq 37 \end{cases} $
-$ 支路3: f(t) = \begin{cases} 0.50t + 15.87, & t < 35 \\ 33.50, & t \geq 35 \end{cases} $
-$ 支路4: f(t) = 7.61 + -3.38 \cos\left(\frac{2\pi 1 t}{41.27023333393062}\right) + 1.20 \sin\left(\frac{2\pi 1 t}{41.27023333393062}\right) + 1.12 \cos\left(\frac{2\pi 2 t}{41.27023333393062}\right) + -0.42 \sin\left(\frac{2\pi 2 t}{41.27023333393062}\right) + -4.79 \cos\left(\frac{2\pi 3 t}{41.27023333393062}\right) + -5.82 \sin\left(\frac{2\pi 3 t}{41.27023333393062}\right) $
+$ 支路1: f(t) = 9.52 （稳定） $
+$ 支路2: f(t) = \begin{cases} 0.42t + 18.55, & t < 24 \\ 28.63, & 24 \leq t < 37 \\ -0.21t + 36.53, & t \geq 37 \end{cases} $
+$ 支路3: f(t) = \begin{cases} 0.49t + 14.05, & t < 35 \\ 31.05, & t \geq 35 \end{cases} $
+$ 支路4: f(t) = 4.82 + -2.21 \cos\left(\frac{2\pi 1 t}{28.16543019218076}\right) + -2.61 \sin\left(\frac{2\pi 1 t}{28.16543019218076}\right) + -5.62 \cos\left(\frac{2\pi 2 t}{28.16543019218076}\right) + -4.08 \sin\left(\frac{2\pi 2 t}{28.16543019218076}\right) + 1.17 \cos\left(\frac{2\pi 3 t}{28.16543019218076}\right) + 1.45 \sin\left(\frac{2\pi 3 t}{28.16543019218076}\right) $
 
 ## 7:30 各支路流量值
 
-- Branch1: 7.00
-- Branch2: 20.00
-- Branch3: 23.37
-- Branch4: 3.82
+- Branch1: 9.00
+- Branch2: 24.00
+- Branch3: 21.34
+- Branch4: -1.06
 
 ## 8:30 各支路流量值
 
-- Branch1: 7.00
-- Branch2: 26.00
-- Branch3: 33.50
-- Branch4: 0.37
+- Branch1: 9.00
+- Branch2: 29.00
+- Branch3: 31.05
+- Branch4: 1.31
 
