@@ -25,6 +25,23 @@ class TrafficFlowAnalyzer:
         self.CYCLE_LENGTH = self.RED_DURATION + self.GREEN_DURATION
         self.FIRST_GREEN = 3       # 第一个绿灯于7:06开始亮起，对应时间索引3
         self.TRAVEL_DELAY = 1      # 支路1和支路2的行驶时间为2分钟，对应延迟1个时间单位
+        self.NUM_CYCLES = 6        # 总共考虑6个绿灯周期，确保覆盖整个时间范围
+
+        # 添加关键时间点
+        self.KEY_TIMES = {
+            'start': 0,     # 7:00
+            't1': 15,       # 7:30
+            't2': 45,       # 8:30
+            'end': 59       # 8:58
+        }
+
+        # 根据题目描述，支路2在特定时间段内有变化
+        self.ROAD2_LINEAR_GROWTH_END = 36  # 8:10对应时间索引36 (实际应为35，调整为36更符合数据)
+        self.ROAD2_STABLE_END = 46         # 8:34对应时间索引46 (实际应为47，调整为46更符合数据)
+
+        # 计算各绿灯周期的开始时间
+        self.GREEN_STARTS = [self.FIRST_GREEN + i * self.CYCLE_LENGTH for i in range(self.NUM_CYCLES)]
+        self.GREEN_ENDS = [start + self.GREEN_DURATION for start in self.GREEN_STARTS]
 
     def _load_dataset(self):
         """加载交通流量数据"""
@@ -89,7 +106,7 @@ class TrafficFlowAnalyzer:
         # 参数解包
         a_params = params[:10]    # 支路1参数
         b_params = params[10:17]  # 支路2参数
-        c_params = params[17:]    # 支路3参数
+        c_params = params[17:]    # 支路3参数 - 现在可以有12个参数(6个周期)
 
         # 计算各支路流量
         flow1 = self._compute_flow1(t_array, a_params)
@@ -111,7 +128,9 @@ class TrafficFlowAnalyzer:
         a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = params
         result = np.zeros_like(t, dtype=float)
 
-        # 第一阶段 - 流量为0
+        # 根据题目描述：支路1的车流量呈现"无车流量→增长→减少→稳定→减少至无车流量"的趋势
+
+        # 第一阶段 - 无车流量
         mask = t < brk1
         result[mask] = 0
 
@@ -127,12 +146,16 @@ class TrafficFlowAnalyzer:
         mask = (t >= brk3) & (t < brk4)
         result[mask] = a5
 
-        # 第五阶段 - 线性减少
-        mask = (t >= brk4)
-        result[mask] = a6 * (t[mask] - brk4)
+        # 第五阶段 - 线性减少至无车流量
+        mask = t >= brk4
+        # 计算在brk4到达终点的斜率，确保在终点(59)处车流量约为0
+        end_distance = 59 - brk4
+        result[mask] = a5 * (1 - (t[mask] - brk4) / end_distance)
 
-        # 确保流量非负
-        return np.maximum(result, 0)
+        # 将过小的值设为0
+        result[result < 0.01] = 0
+
+        return result
 
     def _compute_flow2(self, t, params):
         """计算支路2流量 - 三段式模型
@@ -147,15 +170,20 @@ class TrafficFlowAnalyzer:
         b1, b2, b3, b4, b5, brk5, brk6 = params
         result = np.zeros_like(t, dtype=float)
 
-        # 第一阶段 - 线性增长
+        # 根据题目描述：支路2在[6:58,8:10]和[8:34,8:58]时间段内线性增长和线性减少
+        # 在(8:10,8:34)时间段内稳定
+
+        # 第一阶段 - 线性增长 [6:58,8:10]
         mask = t <= brk5
         result[mask] = b1 * t[mask] + b2
 
-        # 第二阶段 - 稳定
+        # 第二阶段 - 稳定 (8:10,8:34)
         mask = (t > brk5) & (t <= brk6)
+
+        # 为增加稳定性，使用常数值
         result[mask] = b3
 
-        # 第三阶段 - 线性变化
+        # 第三阶段 - 线性减少 [8:34,8:58]
         mask = t > brk6
         result[mask] = b4 * (t[mask] - brk6) + b5
 
@@ -177,21 +205,39 @@ class TrafficFlowAnalyzer:
         result = np.zeros_like(t, dtype=float)
 
         # 将参数分组为每个绿灯周期的斜率和截距
-        cycle_params = [(params[2*i], params[2*i+1]) for i in range(5)]
+        # 支持最多self.NUM_CYCLES个周期，至少需要5个周期的参数
+        min_cycles = 5
+        max_cycles = min(len(params) // 2, self.NUM_CYCLES)  # 避免参数不足
 
-        # 计算每个绿灯周期的开始时间
-        cycle_starts = [self.FIRST_GREEN + i * self.CYCLE_LENGTH for i in range(5)]
+        # 创建至少min_cycles个周期的参数
+        cycle_params = [(params[2*i], params[2*i+1]) for i in range(min_cycles)]
 
+        # 添加额外的周期参数，如果有的话
+        for i in range(min_cycles, max_cycles):
+            if 2*i+1 < len(params):
+                cycle_params.append((params[2*i], params[2*i+1]))
+
+        # 如果参数不足NUM_CYCLES个，使用最后一个周期的参数，但略微降低
+        while len(cycle_params) < self.NUM_CYCLES:
+            last_slope, last_intercept = cycle_params[-1]
+            cycle_params.append((last_slope * 0.9, last_intercept * 0.8))  # 第六个周期略微降低流量
+
+        # 使用类中预先计算好的绿灯周期开始和结束时间
         # 对每个绿灯周期分别计算流量
-        for idx, start in enumerate(cycle_starts):
+        for idx, (start, end) in enumerate(zip(self.GREEN_STARTS, self.GREEN_ENDS)):
+            # 确保不超出时间范围
+            if start >= len(t):
+                continue
+
             # 只在绿灯时段内有流量
-            mask = (t >= start) & (t < start + self.GREEN_DURATION) & signal_states
-            if np.any(mask):
+            mask = (t >= start) & (t < end) & signal_states
+
+            if np.any(mask) and idx < len(cycle_params):
                 slope, intercept = cycle_params[idx]
                 # 线性模型：斜率*(时间-周期开始时间)+截距
                 result[mask] = slope * (t[mask] - start) + intercept
 
-        # 确保流量非负
+        # 确保流量非负且合理
         return np.maximum(result, 0)
 
     def _calculate_main_flow(self, t_array, params):
@@ -254,46 +300,140 @@ class TrafficFlowAnalyzer:
         f1, f2, f3 = self._calculate_branch_flows(self.time_idx, params)
         penalty = 0
 
-        # 1. 非负约束 - 增加惩罚权重
-        penalty += 2000 * (np.sum(np.abs(f1[f1 < 0])) +
-                          np.sum(np.abs(f2[f2 < 0])) +
-                          np.sum(np.abs(f3[f3 < 0])))
+        # 参数解包
+        a_params = params[:10]
+        b_params = params[10:17]
+        c_params = params[17:]  # 现在包含12个参数，6个绿灯周期
 
-        # 2. 连续性约束
-        a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = params[:10]
-        b1, b2, b3, b4, b5, brk5, brk6 = params[10:17]
+        a1, a2, a3, a4, a5, a6, brk1, brk2, brk3, brk4 = a_params
+        b1, b2, b3, b4, b5, brk5, brk6 = b_params
 
-        # 2.1 支路1的连续性约束
+        # 1. 非负约束 - 确保所有流量为非负值
+        negative_flow_penalty = 5000 * (
+            np.sum(np.abs(f1[f1 < 0])) +
+            np.sum(np.abs(f2[f2 < 0])) +
+            np.sum(np.abs(f3[f3 < 0]))
+        )
+        penalty += negative_flow_penalty
+
+        # 2. 连续性约束 - 确保各段函数在转折点处连续
         continuity_errors = [
-            abs(a1 * (brk2 - brk1) + a2 - a4),  # 第一段末尾与第二段开始的连续性
+            # 支路1的连续性约束
+            abs(a1 * (brk2 - brk1) + a2 - (a3 * 0 + a4)),  # 第一段末尾与第二段开始的连续性
             abs(a3 * (brk3 - brk2) + a4 - a5),  # 第二段末尾与第三段的连续性
-            abs(a5 - a6 * 0),                   # 第三段与第四段的连续性
-            abs(b1 * brk5 + b2 - b3),           # 支路2第一段与第二段的连续性
-            abs(b3 - b5)                         # 支路2第二段与第三段的连续性
-        ]
+            abs(a5 - a5 * (1 - 0/max(1, 59-brk4))),  # 第三段与第四段的连续性
 
-        # 2.2 增加对转折点顺序的约束
+            # 支路2的连续性约束
+            abs(b1 * brk5 + b2 - b3),  # 第一段与第二段的连续性
+            abs(b3 - b5)  # 第二段与第三段的连续性
+        ]
+        penalty += 3000 * sum(continuity_errors)
+
+        # 3. 转折点顺序约束 - 确保转折点按时间顺序排列
         order_errors = [
-            max(0, brk1 - brk2),  # 确保 brk1 < brk2
-            max(0, brk2 - brk3),  # 确保 brk2 < brk3
-            max(0, brk3 - brk4),  # 确保 brk3 < brk4
-            max(0, brk5 - brk6)   # 确保 brk5 < brk6
+            max(0, brk1 - brk2) * 20,  # 确保 brk1 < brk2
+            max(0, brk2 - brk3) * 20,  # 确保 brk2 < brk3
+            max(0, brk3 - brk4) * 20,  # 确保 brk3 < brk4
+            max(0, brk5 - brk6) * 20   # 确保 brk5 < brk6
         ]
+        penalty += 5000 * sum(order_errors)
 
-        # 添加连续性和顺序约束惩罚
-        penalty += 1500 * sum(continuity_errors) + 2000 * sum(order_errors)
+        # 4. 支路1特定时间点约束 - 根据题目"无车流量→增长→减少→稳定→减少至无车流量"
+        # 确保在开始和结束时流量接近于0
+        start_end_errors = [
+            np.sum(f1[:int(brk1)]),  # 开始时为0
+            np.sum(f1[int(59*0.9):])  # 结束时接近于0
+        ]
+        penalty += 800 * sum(start_end_errors)
 
-        # 3. 支路3峰值平滑约束 - 相邻绿灯周期之间的流量变化不应过大
-        c_params = params[17:]
+        # 5. 支路2特定时间段约束 - 根据题目描述
+        # 在(8:10,8:34)时间段内稳定
+        stable_variation = np.std(f2[(self.time_idx > brk5) & (self.time_idx <= brk6)])
+        penalty += 1500 * stable_variation
+
+        # 确保支路2的线性增长和线性减少特性
+        growth_linearity = np.std(np.diff(f2[self.time_idx <= brk5]))
+        decrease_linearity = np.std(np.diff(f2[self.time_idx > brk6]))
+        penalty += 800 * (growth_linearity + decrease_linearity)
+
+        # 6. 支路3绿灯周期流量约束
         cycle_params = [(c_params[2*i], c_params[2*i+1]) for i in range(5)]
+        # 添加第六个周期参数
+        if len(c_params) >= 12:
+            cycle_params.append((c_params[10], c_params[11]))
 
-        # 计算相邻周期之间的参数差异
-        for i in range(4):
+        # 6.1 确保绿灯时有流量，红灯时无流量
+        red_light_flow = np.sum(f3[~self._get_signal_states(self.time_idx)])
+        penalty += 8000 * red_light_flow
+
+        # 6.2 相邻绿灯周期间流量变化平滑
+        # 现在处理6个周期
+        for i in range(len(cycle_params) - 1):
             slope1, intercept1 = cycle_params[i]
             slope2, intercept2 = cycle_params[i+1]
 
             # 惩罚斜率和截距的剧烈变化
-            penalty += 100 * (abs(slope1 - slope2) + abs(intercept1 - intercept2))
+            penalty += 300 * (abs(slope1 - slope2) + 0.3 * abs(intercept1 - intercept2))
+
+            # 如果相邻周期流量变化方向相反，额外惩罚
+            if slope1 * slope2 < 0 and abs(slope1) > 0.1 and abs(slope2) > 0.1:
+                penalty += 800
+
+        # 7. 确保总流量与实测数据的模式一致
+        predicted_flow = self._calculate_main_flow(self.time_idx, params)
+        trend_mismatch = 0
+
+        # 计算相邻点的趋势一致性
+        for i in range(1, len(self.time_idx)):
+            pred_direction = np.sign(predicted_flow[i] - predicted_flow[i-1])
+            actual_direction = np.sign(self.actual_flow[i] - self.actual_flow[i-1])
+
+            # 如果趋势不一致且变化明显，添加惩罚
+            if pred_direction * actual_direction < 0:
+                change_magnitude = abs(self.actual_flow[i] - self.actual_flow[i-1])
+                if change_magnitude > 5:  # 仅惩罚明显的趋势不一致
+                    trend_mismatch += change_magnitude
+
+        penalty += 200 * trend_mismatch
+
+        # 8. 惩罚预测流量与实际流量的峰值差异
+        # 找出实际流量的峰值和谷值位置
+        peaks = []
+        for i in range(1, len(self.time_idx)-1):
+            if (self.actual_flow[i] > self.actual_flow[i-1] and
+                self.actual_flow[i] > self.actual_flow[i+1] and
+                self.actual_flow[i] > 80):  # 只考虑主要峰值
+                peaks.append(i)
+
+        # 在峰值位置惩罚预测误差
+        peak_error = 0
+        for peak in peaks:
+            peak_error += abs(predicted_flow[peak] - self.actual_flow[peak])
+
+        penalty += 100 * peak_error
+
+        # 9. 流量平滑度约束 - 惩罚预测流量的过度波动
+        predicted_gradient = np.diff(predicted_flow)
+        gradient_penalty = np.sum(np.abs(predicted_gradient[abs(predicted_gradient) > 15])) - 15 * np.sum(abs(predicted_gradient) > 15)
+        penalty += 50 * gradient_penalty
+
+        # 10. 特定时间区间约束 - 在红绿灯转换处额外惩罚流量剧烈变化
+        signal_changes = []
+        prev_state = self._check_signal_state(0)
+        for i in range(1, len(self.time_idx)):
+            curr_state = self._check_signal_state(i)
+            if curr_state != prev_state:
+                signal_changes.append(i)
+                prev_state = curr_state
+
+        # 在信号灯变化前后各1个时间点内惩罚流量剧变
+        change_window = 1
+        for change_idx in signal_changes:
+            start_idx = max(0, change_idx - change_window)
+            end_idx = min(len(self.time_idx) - 1, change_idx + change_window)
+            window_gradient = np.diff(predicted_flow[start_idx:end_idx+1])
+            gradient_sum = np.sum(np.abs(window_gradient))
+            penalty += 300 * gradient_sum
 
         return penalty
 
@@ -302,23 +442,53 @@ class TrafficFlowAnalyzer:
         print("开始模型优化...")
 
         # 根据问题描述和数据特征调整初始参数
+        # 支路1参数 [a1,a2,a3,a4,a5,a6,brk1,brk2,brk3,brk4] - 10个参数
+        # 支路2参数 [b1,b2,b3,b4,b5,brk5,brk6] - 7个参数
+        # 支路3参数 - 每个绿灯周期的斜率和截距 - 12个参数(6个周期)
         initial_guess = [
-            2.0, 0.0, -1.5, 30.0, 20.0, -0.5, 5.0, 12.0, 16.0, 47.0,  # 支路1参数
-            0.8, 8.0, 25.0, -1.2, 30.0, 25.0, 44.0,                  # 支路2参数
-            10.0, 5.0, 8.0, 15.0, 12.0, 20.0, 15.0, 25.0, 10.0, 30.0  # 支路3参数
+            # 支路1参数 - 调整后的更合理初始值
+            4.0, 0.0, -1.8, 30.0, 21.0, -0.8, 4.0, 10.0, 16.0, 46.0,
+
+            # 支路2参数 - 根据题目描述8:10和8:34时间点调整
+            0.7, 4.0, 26.0, -1.2, 30.0, self.ROAD2_LINEAR_GROWTH_END, self.ROAD2_STABLE_END,
+
+            # 支路3参数 - 根据绿灯周期调整，降低整体贡献
+            8.0, 6.0, 8.0, 16.0, 8.0, 18.0, 10.0, 22.0, 5.0, 15.0,
+            # 添加第六个绿灯周期参数
+            4.0, 12.0
         ]
 
         # 根据问题描述调整参数边界
         param_bounds = [
             # 支路1参数边界
-            (0.5, 8.0), (0.0, 10.0), (-5.0, -0.5), (20.0, 40.0), (15.0, 35.0), (-3.0, -0.1),
-            (3.0, 8.0), (7.0, 15.0), (12.0, 20.0), (35.0, 55.0),
-            # 支路2参数边界
-            (0.3, 2.5), (5.0, 15.0), (20.0, 35.0), (-3.0, -0.5), (25.0, 40.0),
-            (20.0, 35.0), (35.0, 50.0),
-            # 支路3参数边界 - 调整以适应绿灯周期
-            (5.0, 25.0), (0.0, 40.0), (5.0, 25.0), (10.0, 40.0), (5.0, 30.0),
-            (10.0, 35.0), (5.0, 30.0), (10.0, 40.0), (0.0, 25.0), (10.0, 40.0)
+            (2.0, 8.0),    # 增长斜率
+            (0.0, 3.0),    # 初始值
+            (-4.0, -0.8),  # 减少斜率1
+            (25.0, 40.0),  # 峰值
+            (18.0, 30.0),  # 稳定值
+            (-2.0, -0.1),  # 减少斜率2 (不再使用，但保留参数位置)
+            (3.0, 6.0),    # brk1 - 开始增长的时间点 (对应7:06-7:12)
+            (9.0, 12.0),   # brk2 - 开始减少的时间点 (对应7:18-7:24)
+            (14.0, 18.0),  # brk3 - 开始稳定的时间点 (对应7:28-7:36)
+            (42.0, 48.0),  # brk4 - 开始最终减少的时间点 (对应8:24-8:36)
+
+            # 支路2参数边界 - 根据题目描述调整
+            (0.4, 1.2),    # 增长斜率
+            (2.0, 8.0),    # 截距
+            (22.0, 32.0),  # 稳定值
+            (-2.0, -0.5),  # 减少斜率
+            (25.0, 35.0),  # 终值
+            (34.0, 37.0),  # brk5 - 稳定开始时间点 (8:10附近)
+            (45.0, 48.0),  # brk6 - 稳定结束时间点 (8:34附近)
+
+            # 支路3参数边界 - 调整以适应绿灯周期，降低峰值
+            (3.0, 15.0), (0.0, 20.0),  # 第一个绿灯周期
+            (3.0, 15.0), (8.0, 25.0),  # 第二个绿灯周期
+            (3.0, 15.0), (10.0, 30.0), # 第三个绿灯周期
+            (3.0, 15.0), (10.0, 30.0), # 第四个绿灯周期
+            (0.0, 10.0), (5.0, 20.0),  # 第五个绿灯周期
+            # 添加第六个绿灯周期边界
+            (0.0, 8.0), (5.0, 15.0)    # 第六个绿灯周期
         ]
 
         # 优化策略：多重起点，多阶段优化
@@ -327,13 +497,24 @@ class TrafficFlowAnalyzer:
         optimization_history = []
 
         # 第一阶段：使用不同的初始点进行多次优化
-        num_attempts = 5  # 增加尝试次数
+        num_attempts = 8  # 增加尝试次数以提高找到好解的几率
         print(f"第一阶段：使用{num_attempts}个不同起点进行初步优化...")
 
         for attempt in range(num_attempts):
-            # 在初始猜测附近随机扰动
-            perturbation = 0.1 * (1 + 0.2 * (attempt/num_attempts))  # 逐渐增加扰动幅度
-            perturbed_guess = np.array(initial_guess) * (1 + perturbation * np.random.randn(len(initial_guess)))
+            # 使用不同的扰动策略
+            if attempt < 4:
+                # 在初始猜测附近小幅扰动
+                perturbation = 0.1 * (1 + 0.15 * attempt)
+                perturbed_guess = np.array(initial_guess) * (1 + perturbation * np.random.randn(len(initial_guess)))
+            else:
+                # 在初始猜测附近中等幅度扰动，同时对某些关键参数额外调整
+                perturbation = 0.2 * (1 + 0.1 * (attempt-4))
+                perturbed_guess = np.array(initial_guess) * (1 + perturbation * np.random.randn(len(initial_guess)))
+
+                # 特别调整支路1的转折点
+                key_indices = [6, 7, 8, 9]  # 支路1转折点索引
+                for idx in key_indices:
+                    perturbed_guess[idx] = initial_guess[idx] + 1.5 * np.random.randn()
 
             # 确保扰动后的参数仍在边界内
             for i, (lb, ub) in enumerate(param_bounds):
@@ -342,15 +523,17 @@ class TrafficFlowAnalyzer:
             print(f"  尝试 {attempt+1}/{num_attempts}...")
 
             # 选择不同的优化方法
-            if attempt % 3 == 0:
-                method = 'L-BFGS-B'
-                options = {'maxiter': 500, 'gtol': 1e-5}
-            elif attempt % 3 == 1:
-                method = 'SLSQP'
-                options = {'maxiter': 500, 'ftol': 1e-5}
-            else:
-                method = 'TNC'
-                options = {'maxiter': 500}
+            methods = ['L-BFGS-B', 'SLSQP', 'TNC', 'Powell']
+            method = methods[attempt % len(methods)]
+
+            if method == 'L-BFGS-B':
+                options = {'maxiter': 600, 'gtol': 1e-5}
+            elif method == 'SLSQP':
+                options = {'maxiter': 600, 'ftol': 1e-5}
+            elif method == 'TNC':
+                options = {'maxiter': 600}
+            else:  # Powell
+                options = {'maxiter': 600, 'xtol': 1e-5}
 
             try:
                 optimization_result = minimize(
@@ -379,9 +562,9 @@ class TrafficFlowAnalyzer:
         # 第二阶段：细化最佳结果
         print("\n第二阶段：细化最佳结果...")
 
-        # 选择前3个最佳结果进行细化
+        # 选择前4个最佳结果进行细化
         sorted_results = sorted(optimization_history, key=lambda x: x['error'])
-        top_k = min(3, len(sorted_results))
+        top_k = min(4, len(sorted_results))
 
         for i in range(top_k):
             result = sorted_results[i]
@@ -393,7 +576,7 @@ class TrafficFlowAnalyzer:
                     result['params'],
                     method='L-BFGS-B',
                     bounds=param_bounds,
-                    options={'maxiter': 1000, 'gtol': 1e-7}
+                    options={'maxiter': 1500, 'gtol': 1e-8}
                 )
 
                 if refined_result.fun < best_error:
@@ -402,6 +585,24 @@ class TrafficFlowAnalyzer:
                     print(f"    优化成功，新误差: {best_error:.6f}")
             except Exception as e:
                 print(f"    细化优化失败: {str(e)}")
+
+        # 第三阶段：使用最佳结果进行最终优化
+        print("\n第三阶段：最终优化...")
+        try:
+            final_result = minimize(
+                self._evaluate_model,
+                best_params,
+                method='SLSQP',
+                bounds=param_bounds,
+                options={'maxiter': 2000, 'ftol': 1e-10}
+            )
+
+            if final_result.fun < best_error:
+                best_error = final_result.fun
+                best_params = final_result.x
+                print(f"  最终优化成功，最终误差: {best_error:.6f}")
+        except Exception as e:
+            print(f"  最终优化失败: {str(e)}")
 
         # 使用最佳参数
         self.optimal_params = best_params
@@ -425,6 +626,16 @@ class TrafficFlowAnalyzer:
         print(f"\n优化完成！总体RMSE误差: {self.model_error:.4f}")
         for i, (start, end) in enumerate(time_segments):
             print(f"时间段 {start+1}-{end+1} RMSE误差: {self.segment_errors[i]:.4f}")
+
+        # 计算特定时刻的流量
+        t1 = self.KEY_TIMES['t1']  # 7:30
+        t2 = self.KEY_TIMES['t2']  # 8:30
+        f1_t1, f2_t1, f3_t1 = self._calculate_branch_flows(np.array([t1]), self.optimal_params)
+        f1_t2, f2_t2, f3_t2 = self._calculate_branch_flows(np.array([t2]), self.optimal_params)
+
+        print("\n关键时刻流量预测:")
+        print(f"7:30 - 支路1: {f1_t1[0]:.2f}, 支路2: {f2_t1[0]:.2f}, 支路3: {f3_t1[0]:.2f}")
+        print(f"8:30 - 支路1: {f1_t2[0]:.2f}, 支路2: {f2_t2[0]:.2f}, 支路3: {f3_t2[0]:.2f}")
 
     def visualize_results(self):
         """可视化分析结果"""
@@ -476,13 +687,14 @@ class TrafficFlowAnalyzer:
                         arrowprops=dict(arrowstyle='->'), color='m')
 
         # 标记绿灯时段
-        for i in range(6):
-            start = self.FIRST_GREEN + i * self.CYCLE_LENGTH
+        for i, (start, end) in enumerate(zip(self.GREEN_STARTS, self.GREEN_ENDS)):
             if start < 60:  # 确保在时间范围内
-                end = min(start + self.GREEN_DURATION, 60)
+                end = min(end, 60)
                 plt.axvspan(start, end, color='green', alpha=0.1)
-                plt.annotate(f'绿灯{i+1}', xy=(start + (end-start)/2, 90),
-                            ha='center', color='green')
+                # 只标注在图表范围内的绿灯
+                if start < 60 and i < self.NUM_CYCLES:
+                    plt.annotate(f'绿灯{i+1}', xy=(start + (end-start)/2, max(90, 75+i*5)),
+                                ha='center', color='green')
 
         plt.xlabel('时间点(每2分钟)')
         plt.ylabel('车流量')
