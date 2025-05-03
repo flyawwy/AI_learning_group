@@ -179,6 +179,18 @@ def plot_and_save():
             f.write(line + '\n')
 
 if __name__ == "__main__":
+    import argparse
+    import os
+
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description='P2问题求解工具')
+    parser.add_argument('--p5', action='store_true', help='启用P5问题求解（关键采样点分析）')
+    parser.add_argument('--method', type=str, default='combined',
+                        choices=['derivative', 'peaks', 'breakpoints', 'combined'],
+                        help='采样点识别方法（仅在启用P5时有效）')
+
+    args = parser.parse_args()
+
     # 参数边界和初始猜测
     _bounds = [
         (5, 10), (0.4, 0.5), (10, 20), (0.2, 0.3), (0.4, 0.5), (10, 20), (35, 45),
@@ -192,6 +204,10 @@ if __name__ == "__main__":
         result_local = minimize(objective, xopt_pso, args=(times, F_true), method='L-BFGS-B', bounds=_bounds)
         return result_local.x, result_local.fun
 
+    # 创建P2目录（如果不存在）
+    os.makedirs('./P2', exist_ok=True)
+
+    # 常规P2问题求解
     best_params, best_error = optimize()
     flow_7_30 = compute_branch_flows(15, best_params)
     flow_8_30 = compute_branch_flows(45, best_params)
@@ -201,6 +217,34 @@ if __name__ == "__main__":
     A0_opt = best_params[9]
     A_opt = best_params[10:10+N_opt]
     B_opt = best_params[10+N_opt:10+2*N_opt]
+
+    # 生成常规结果
+    plot_and_save()
+
+    # 如果启用了P5问题求解
+    if args.p5:
+        print("\n正在进行P5问题求解（关键采样点分析）...")
+        from P5.key_sampling_points import KeySamplingPointsAnalyzer
+
+        # 创建关键采样点分析器
+        analyzer = KeySamplingPointsAnalyzer(data_source='P2')
+
+        # 识别关键采样点
+        analyzer.identify_key_points(method=args.method)
+
+        # 评估采样点
+        evaluation_results = analyzer.evaluate_sampling_points(original_params=best_params)
+
+        # 可视化结果
+        analyzer.visualize_sampling_points(evaluation_results)
+
+        # 生成报告
+        analyzer.generate_report(evaluation_results)
+
+        print(f"P5分析完成！关键采样点数量：{len(analyzer.sampling_indices)}")
+        print(f"采样点时间索引：{analyzer.sampling_indices}")
+        print(f"采样点时间值：{analyzer.sampling_points}")
+        print(f"结果已保存到 ./P5/P2/ 目录")
     print("最终最优参数:", best_params)
     print("最终最小误差:", best_error)
     print("7:30 各支路流量值:", flow_7_30)

@@ -403,7 +403,48 @@ class TrafficAnalysisSystem:
             f.write(f"| 8:30 | {f1_830[0]:5.2f} | {f2_830[0]:5.2f} | {f3_830[0]:5.2f} | {main_flow_830:8.2f} | {self.actual_flow[t2]:8.2f} |\n")
 
 if __name__ == "__main__":
+    import argparse
+    import os
+
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description='P3问题求解工具')
+    parser.add_argument('--p5', action='store_true', help='启用P5问题求解（关键采样点分析）')
+    parser.add_argument('--method', type=str, default='combined',
+                        choices=['derivative', 'peaks', 'breakpoints', 'combined'],
+                        help='采样点识别方法（仅在启用P5时有效）')
+
+    args = parser.parse_args()
+
+    # 创建P3目录（如果不存在）
+    os.makedirs('./P3', exist_ok=True)
+
+    # 常规P3问题求解
     analyzer = TrafficAnalysisSystem()
     analyzer.optimize_model()
     analyzer.generate_report()
     analyzer.visualize_results()
+
+    # 如果启用了P5问题求解
+    if args.p5:
+        print("\n正在进行P5问题求解（关键采样点分析）...")
+        from P5.key_sampling_points import KeySamplingPointsAnalyzer
+
+        # 创建关键采样点分析器
+        analyzer_p5 = KeySamplingPointsAnalyzer(data_source='P3')
+
+        # 识别关键采样点
+        analyzer_p5.identify_key_points(method=args.method)
+
+        # 评估采样点
+        evaluation_results = analyzer_p5.evaluate_sampling_points()
+
+        # 可视化结果
+        analyzer_p5.visualize_sampling_points(evaluation_results)
+
+        # 生成报告
+        analyzer_p5.generate_report(evaluation_results)
+
+        print(f"P5分析完成！关键采样点数量：{len(analyzer_p5.sampling_indices)}")
+        print(f"采样点时间索引：{analyzer_p5.sampling_indices}")
+        print(f"采样点时间值：{analyzer_p5.sampling_points}")
+        print(f"结果已保存到 ./P5/P3/ 目录")
