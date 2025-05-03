@@ -18,8 +18,8 @@ class TrafficAnalysisSystem:
         self.RED_DURATION = 4
         self.GREEN_DURATION = 5
         self.CYCLE_LENGTH = self.RED_DURATION + self.GREEN_DURATION
-        self.FIRST_GREEN = 3
-        self.TRAVEL_DELAY = 1
+        # FIRST_GREEN和TRAVEL_DELAY将作为可优化参数，在optimize_model中设置
+        # 这里只是初始化变量，但不赋初始值
 
     def _load_dataset(self):
         """加载并预处理交通流量数据（方法1：数据平滑）"""
@@ -54,9 +54,14 @@ class TrafficAnalysisSystem:
     def _calculate_branch_flows(self, t_array, params):
         """计算各支路流量"""
         # 参数解包
+        # 最后两个参数为FIRST_GREEN和TRAVEL_DELAY
+        self.FIRST_GREEN = params[-2]
+        self.TRAVEL_DELAY = params[-1]
+
+        # 其他参数解包
         a_params = params[:10]
         b_params = params[10:15]
-        c_params = params[15:]
+        c_params = params[15:-2]
 
         # 支路1流量计算
         flow1 = self._compute_flow1(t_array, a_params)
@@ -95,8 +100,8 @@ class TrafficAnalysisSystem:
         """计算支路2流量"""
         b1, b2, b3, b4, b5 = params
         result = np.zeros_like(t, dtype=float)
-        brk5 = 35
-        brk6 = 47
+        brk5 = 17
+        brk6 = 35
 
         mask = t <= brk5
         result[mask] = b1 * t[mask] + b2
@@ -131,9 +136,12 @@ class TrafficAnalysisSystem:
         f1_delayed = np.zeros_like(t_array)
         f2_delayed = np.zeros_like(t_array)
 
+        # 将TRAVEL_DELAY转换为整数用于索引
+        travel_delay_idx = int(self.TRAVEL_DELAY)
+
         valid_idx = t_array >= self.TRAVEL_DELAY
-        f1_delayed[valid_idx] = f1[np.where(valid_idx)[0] - self.TRAVEL_DELAY]
-        f2_delayed[valid_idx] = f2[np.where(valid_idx)[0] - self.TRAVEL_DELAY]
+        f1_delayed[valid_idx] = f1[np.where(valid_idx)[0] - travel_delay_idx]
+        f2_delayed[valid_idx] = f2[np.where(valid_idx)[0] - travel_delay_idx]
 
         f1_delayed[~valid_idx] = f1[0]
         f2_delayed[~valid_idx] = f2[0]
@@ -188,10 +196,12 @@ class TrafficAnalysisSystem:
 
     def optimize_model(self):
         """优化模型参数"""
+        # 初始参数设置，添加FIRST_GREEN和TRAVEL_DELAY作为可优化参数
         initial_guess = [
             2.0, 30.0, -1.0, 20.0, 30.0, -1.0, 7.0, 20.0, 30.0, 42.0,
             0.5, 0.0, 40.0, -1.0, 20.0,
-            1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0
+            1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0, 1.0, 20.0,
+            3.0, 1.0  # FIRST_GREEN和TRAVEL_DELAY的初始值
         ]
 
         param_bounds = [
@@ -199,7 +209,8 @@ class TrafficAnalysisSystem:
             (5.0, 10.0), (19.0, 21.0), (25.0, 35.0), (40.0, 45.0),
             (0.1, 2.0), (0.0, 5.0), (35.0, 45.0), (-2.0, -0.1), (15.0, 25.0),
             (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),
-            (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0)
+            (0.0, 2.0), (0.0, 30.0), (0.0, 2.0), (0.0, 30.0),(0.0, 2.0), (0.0, 30.0),
+            (2.0, 5.0), (0.5, 2.0)  # FIRST_GREEN和TRAVEL_DELAY的边界
         ]
 
         optimization_result = minimize(
@@ -228,7 +239,7 @@ class TrafficAnalysisSystem:
         plt.plot(self.time_idx, self.predicted_flow, 'r--', lw=2, label='预测流量')
         plt.xlabel('时间点(每2分钟)')
         plt.ylabel('车流量')
-        plt.title('主路流量实测与预测对比(使用Huber损失)')
+        plt.title('主路流量实测与预测对比')
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
@@ -252,7 +263,7 @@ class TrafficAnalysisSystem:
 
         plt.xlabel('时间点(每2分钟)')
         plt.ylabel('车流量')
-        plt.title('各支路流量变化情况(使用数据平滑和Huber损失)')
+        plt.title('各支路流量变化情况')
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
@@ -262,7 +273,7 @@ class TrafficAnalysisSystem:
         """生成分析报告"""
         a_params = self.optimal_params[:10]
         b_params = self.optimal_params[10:15]
-        c_params = self.optimal_params[15:]
+        c_params = self.optimal_params[15:-2]  # 排除最后两个参数(FIRST_GREEN和TRAVEL_DELAY)
 
         # 计算特定时间点流量
         t1, t2 = 15, 45  # 7:30和8:30对应的时间索引
@@ -282,7 +293,7 @@ class TrafficAnalysisSystem:
         main_flow_830 = self._calculate_main_flow(np.array([t2]), self.optimal_params)[0]
 
         with open('./P4/交通流量分析报告4.md', 'w', encoding='utf-8') as f:
-            f.write("# === 交通流量分析报告(使用数据平滑和Huber损失) ===\n\n")
+            f.write("# === 交通流量分析报告 ===\n\n")
 
             # 模型总体误差评估
             f.write("## 【模型误差评估】\n\n")
@@ -294,6 +305,11 @@ class TrafficAnalysisSystem:
             f.write(f"| 7:30-8:00 | {segment_errors[1]:.4f} |\n")
             f.write(f"| 8:00-8:30 | {segment_errors[2]:.4f} |\n")
             f.write(f"| 8:30-8:58 | {segment_errors[3]:.4f} |\n\n")
+
+            # 优化后的信号灯和延迟参数
+            f.write("## 【优化后的系统参数】\n\n")
+            f.write(f"第一个绿灯开始时间: {self.optimal_params[-2]:.4f}\n")
+            f.write(f"支路1和支路2的行驶延迟: {self.optimal_params[-1]:.4f}\n\n")
 
             f.write("## 【支路1模型参数】\n\n")
             f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
