@@ -220,7 +220,6 @@ class TrafficAnalysisSystem:
         """可视化分析结果"""
         self._plot_main_comparison()
         self._plot_branch_flows()
-        plt.show()
 
     def _plot_main_comparison(self):
         """绘制主路流量对比图"""
@@ -295,7 +294,6 @@ class TrafficAnalysisSystem:
             f.write(f"| 7:30-8:00 | {segment_errors[1]:.4f} |\n")
             f.write(f"| 8:00-8:30 | {segment_errors[2]:.4f} |\n")
             f.write(f"| 8:30-8:58 | {segment_errors[3]:.4f} |\n\n")
-            f.write("注：此版本使用了数据平滑和Huber损失函数，对设备误差更具鲁棒性\n\n")
 
             f.write("## 【支路1模型参数】\n\n")
             f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
@@ -348,7 +346,7 @@ class TrafficAnalysisSystem:
                 end = start + self.GREEN_DURATION
                 slope, intercept = c_params[2*i], c_params[2*i+1]
                 f.write(f"{slope:.4f} \\cdot (t-{start}) + {intercept:.4f}, & t \\in [{start}, {end}) \\text{{ 且为绿灯时段}} \\\\ ")
-            f.write(r"0, & \\text{其他时段（红灯）} \end{cases}$")
+            f.write(r"0, & \text{其他时段（红灯）} \end{cases}$")
             f.write('\n\n')
 
             # 关键时间点流量
