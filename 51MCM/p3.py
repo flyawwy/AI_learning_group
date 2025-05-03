@@ -357,7 +357,6 @@ class TrafficAnalysisSystem:
 
             # 支路3模型参数
             f.write("## 【支路3模型参数】\n\n")
-            f.write("支路3在红灯时段流量为0，在绿灯时段呈现线性变化\n")
             for i in range(5):
                 slope, intercept = c_params[2*i], c_params[2*i+1]
                 f.write(f"绿灯周期{i+1}的斜率: {slope:.4f}, 截距: {intercept:.4f}\n")

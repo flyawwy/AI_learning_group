@@ -95,7 +95,7 @@ class TrafficAnalysisSystem:
         """计算支路2流量"""
         b1, b2, b3, b4, b5 = params
         result = np.zeros_like(t, dtype=float)
-        brk5 =35
+        brk5 = 35
         brk6 = 47
 
         mask = t <= brk5
@@ -233,13 +233,13 @@ class TrafficAnalysisSystem:
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig('主路流量实测与预测对比4.png', dpi=300, bbox_inches='tight')
+        plt.savefig('./P4/主路流量实测与预测对比4.png', dpi=300, bbox_inches='tight')
 
     def _plot_branch_flows(self):
         """绘制支路流量图"""
         f1, f2, f3 = self.branch_flows
         a_params = self.optimal_params[:10]
-        b_params = self.optimal_params[10:17]
+        b_params = self.optimal_params[10:15]
 
         plt.figure(figsize=(14, 8))
         plt.plot(self.time_idx, f1, 'g-', label='支路1')
@@ -257,25 +257,47 @@ class TrafficAnalysisSystem:
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig('支路车流量变化4.png', dpi=300, bbox_inches='tight')
+        plt.savefig('./P4/支路车流量变化4.png', dpi=300, bbox_inches='tight')
 
     def generate_report(self):
         """生成分析报告"""
         a_params = self.optimal_params[:10]
-        b_params = self.optimal_params[10:17]
-        c_params = self.optimal_params[17:]
+        b_params = self.optimal_params[10:15]
+        c_params = self.optimal_params[15:]
 
         # 计算特定时间点流量
         t1, t2 = 15, 45  # 7:30和8:30对应的时间索引
         f1_730, f2_730, f3_730 = self._calculate_branch_flows(np.array([t1]), self.optimal_params)
         f1_830, f2_830, f3_830 = self._calculate_branch_flows(np.array([t2]), self.optimal_params)
 
-        with open('交通流量分析报告4.txt', 'w', encoding='utf-8') as f:
-            f.write("=== 交通流量分析报告(使用数据平滑和Huber损失) ===\n\n")
-            f.write(f"模型RMSE误差: {self.model_error:.4f}\n\n")
+        # 计算各时间段的平均误差
+        time_segments = [(0, 15), (15, 30), (30, 45), (45, 59)]
+        segment_errors = []
+        for start, end in time_segments:
+            segment_idx = (self.time_idx >= start) & (self.time_idx <= end)
+            segment_error = np.sqrt(np.mean((self.predicted_flow[segment_idx] - self.actual_flow[segment_idx]) ** 2))
+            segment_errors.append(segment_error)
+
+        # 计算主路流量
+        main_flow_730 = self._calculate_main_flow(np.array([t1]), self.optimal_params)[0]
+        main_flow_830 = self._calculate_main_flow(np.array([t2]), self.optimal_params)[0]
+
+        with open('./P4/交通流量分析报告4.md', 'w', encoding='utf-8') as f:
+            f.write("# === 交通流量分析报告(使用数据平滑和Huber损失) ===\n\n")
+
+            # 模型总体误差评估
+            f.write("## 【模型误差评估】\n\n")
+            f.write(f"总体RMSE误差: {self.model_error:.4f}\n\n")
+            f.write("各时间段误差:\n\n")
+            f.write("| 时间段 | RMSE误差 |\n")
+            f.write("|--------|----------|\n")
+            f.write(f"| 7:00-7:30 | {segment_errors[0]:.4f} |\n")
+            f.write(f"| 7:30-8:00 | {segment_errors[1]:.4f} |\n")
+            f.write(f"| 8:00-8:30 | {segment_errors[2]:.4f} |\n")
+            f.write(f"| 8:30-8:58 | {segment_errors[3]:.4f} |\n\n")
             f.write("注：此版本使用了数据平滑和Huber损失函数，对设备误差更具鲁棒性\n\n")
 
-            f.write("【支路1模型参数】\n")
+            f.write("## 【支路1模型参数】\n\n")
             f.write(f"增长阶段斜率: {a_params[0]:.4f}\n")
             f.write(f"初始值: {a_params[1]:.4f}\n")
             f.write(f"下降阶段斜率1: {a_params[2]:.4f}\n")
@@ -283,18 +305,58 @@ class TrafficAnalysisSystem:
             f.write(f"下降阶段斜率2: {a_params[5]:.4f}\n")
             f.write(f"转折点: {a_params[6]:.1f}, {a_params[7]:.1f}, {a_params[8]:.1f}, {a_params[9]:.1f}\n\n")
 
-            f.write("【支路2模型参数】\n")
+            f.write("## 【支路2模型参数】\n\n")
             f.write(f"增长斜率: {b_params[0]:.4f}\n")
             f.write(f"截距: {b_params[1]:.4f}\n")
             f.write(f"稳定值: {b_params[2]:.4f}\n")
             f.write(f"下降斜率: {b_params[3]:.4f}\n")
             f.write(f"终值: {b_params[4]:.4f}\n")
-            f.write(f"转折点: {b_params[5]:.1f}, {b_params[6]:.1f}\n\n")
+            f.write(f"转折点: 35.0, 47.0\n\n")
 
-            f.write("【关键时间点流量】\n")
-            f.write("时间点 | 支路1 | 支路2 | 支路3\n")
-            f.write(f"7:30  | {f1_730[0]:5.2f} | {f2_730[0]:5.2f} | {f3_730[0]:5.2f}\n")
-            f.write(f"8:30  | {f1_830[0]:5.2f} | {f2_830[0]:5.2f} | {f3_830[0]:5.2f}\n")
+            f.write("## 【支路3模型参数】\n\n")
+            f.write("支路3在红灯时段流量为0，在绿灯时段呈现线性变化\n")
+            for i in range(7):
+                slope, intercept = c_params[2*i], c_params[2*i+1]
+                f.write(f"绿灯周期{i+1}的斜率: {slope:.4f}, 截距: {intercept:.4f}\n")
+            f.write("\n")
+
+            # 支路1流量模型表达式
+            f.write("## 【支路1流量模型表达式】\n\n")
+            f.write(r"$f_1(t) = \begin{cases} ")
+            f.write(f"0, & t < {a_params[6]:.1f} \\ ")
+            f.write(f"{a_params[0]:.4f} \\cdot (t-{a_params[6]:.1f}) + {a_params[1]:.4f}, & {a_params[6]:.1f} \\leq t < {a_params[7]:.1f} \\\\ ")
+            f.write(f"{a_params[2]:.4f} \\cdot (t-{a_params[7]:.1f}) + {a_params[3]:.4f}, & {a_params[7]:.1f} \\leq t < {a_params[8]:.1f} \\\\ ")
+            f.write(f"{a_params[4]:.4f}, & {a_params[8]:.1f} \\leq t < {a_params[9]:.1f} \\\\ ")
+            f.write(f"{a_params[5]:.4f} \\cdot (t-{a_params[9]:.1f}), & t \\geq {a_params[9]:.1f} ")
+            f.write(r"\end{cases}$")
+            f.write('\n\n')
+
+            # 支路2流量模型表达式
+            f.write("## 【支路2流量模型表达式】\n\n")
+            f.write(r"$f_2(t) = \begin{cases} ")
+            f.write(f"{b_params[0]:.4f} \\cdot t + {b_params[1]:.4f}, & t \\leq 35.0 \\\\ ")
+            f.write(f"{b_params[2]:.4f}, & 35.0 < t \\leq 47.0 \\\\ ")
+            f.write(f"{b_params[3]:.4f} \\cdot (t-47.0) + {b_params[4]:.4f}, & t > 47.0 ")
+            f.write(r"\end{cases}$")
+            f.write('\n\n')
+
+            # 支路3流量模型表达式
+            f.write("## 【支路3流量模型表达式】\n\n")
+            f.write(r"$f_3(t) = \begin{cases} ")
+            for i in range(7):
+                start = self.FIRST_GREEN + i * self.CYCLE_LENGTH
+                end = start + self.GREEN_DURATION
+                slope, intercept = c_params[2*i], c_params[2*i+1]
+                f.write(f"{slope:.4f} \\cdot (t-{start}) + {intercept:.4f}, & t \\in [{start}, {end}) \\text{{ 且为绿灯时段}} \\\\ ")
+            f.write(r"0, & \\text{其他时段（红灯）} \end{cases}$")
+            f.write('\n\n')
+
+            # 关键时间点流量
+            f.write("## 【关键时间点流量】\n\n")
+            f.write("| 时间点 | 支路1 | 支路2 | 支路3 | 主路4(预测) | 主路4(实际) |\n")
+            f.write("|--------|-------|-------|-------|------------|------------|\n")
+            f.write(f"| 7:30 | {f1_730[0]:5.2f} | {f2_730[0]:5.2f} | {f3_730[0]:5.2f} | {main_flow_730:8.2f} | {self.actual_flow[t1]:8.2f} |\n")
+            f.write(f"| 8:30 | {f1_830[0]:5.2f} | {f2_830[0]:5.2f} | {f3_830[0]:5.2f} | {main_flow_830:8.2f} | {self.actual_flow[t2]:8.2f} |\n")
 
 
 if __name__ == "__main__":
